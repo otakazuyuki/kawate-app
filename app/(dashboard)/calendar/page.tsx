@@ -1,10 +1,11 @@
 "use client";
 
 import {useState} from "react";
-import {Plus} from "lucide-react";
+import {Plus,X} from "lucide-react";
 
 export default function CalendarPage(){
     const [showSoshikiren,setShowSoshikiren]=useState(true);
+    const [selectedDay,setSelectedDay]=useState<number|null>(null);
     const dayInMonth=Array.from({length:30},(_,i)=>i+1);
     const weekDays=["月","火","水","木","金","土","日"];
     return(
@@ -53,7 +54,7 @@ export default function CalendarPage(){
                                 <button
                                     key={day}
                                     className="min-h-[80px] p-1 flex flex-col justify-between items-start hover:bg-slate-800/50 transition-colors text-left group"
-                                    onClick={() => alert('${day}日がタップされました。ここにしたからシートを出します。')}
+                                    onClick={() => setSelectedDay(selectedDay === day ? null : day)}
                                 >
                                     <span className={`text-xs font-medium px-1.5 py-0.5 rounded-md ${
                                         day === 15 ? "bg-emerald-500/20 text-emerald-400 font-bold" : "text-slate-400"
@@ -79,6 +80,36 @@ export default function CalendarPage(){
                         })}
                     </div>
             </div>
+            {selectedDay !== null && (
+                <div className="w-full md:w-80 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-2xl relative">
+                    <h2 className="text-lg font-bold text-slate-100 border-b border-slate-800 pb-2 mb-4">
+                        6月{selectedDay}日の予定
+                    </h2>
+            <div className="space-y-3">
+              {selectedDay === 15 ? (
+                <>
+                  <div className="border-l-4 border-emerald-500 pl-3 py-1 bg-slate-800/50 rounded-r-md">
+                    <div className="font-bold text-sm text-slate-200">組織練</div>
+                    <div className="text-xs text-slate-400">13:00 - 15:00</div>
+                  </div>
+                  <div className="border-l-4 border-emerald-500 pl-3 py-1 bg-slate-800/50 rounded-r-md">
+                    <div className="font-bold text-sm text-slate-200">BBQ準備</div>
+                    <div className="text-xs text-slate-400">18:00 - 19:00</div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate-500 text-center py-4">予定はありません</p>
+              )}
+            </div>
+
+            <button 
+              onClick={() => setSelectedDay(null)}
+              className="mt-4 w-full bg-slate-800 text-slate-300 text-xs py-2 rounded-md hover:bg-slate-700 transition-colors"
+            >
+              閉じる
+            </button>
+          </div>
+        )}
         </div>
     );
 }
