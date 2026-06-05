@@ -6,6 +6,8 @@ import {Plus,X} from "lucide-react";
 export default function CalendarPage(){
     const [showSoshikiren,setShowSoshikiren]=useState(true);
     const [selectedDay,setSelectedDay]=useState<number|null>(null);
+    const [isModalOpen,setIsModalOpen]=useState(false);
+    const[modalMode,setModalMode]=useState<"add"|"edit">("add");
     const dayInMonth=Array.from({length:30},(_,i)=>i+1);
     const weekDays=["月","火","水","木","金","土","日"];
     return(
@@ -28,7 +30,13 @@ export default function CalendarPage(){
                             }`} />
                         </button>
                     </div>
-                    <button className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full flex items-center justify-center transition-colors">
+                    <button 
+                        onClick={() => {
+                            setIsModalOpen(true);
+                            setModalMode("add");
+                        }}
+                        className="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full flex items-center justify-center transition-colors"
+                    >
                         <Plus className="w-5 h-5" />
                     </button>
                 </div>
@@ -88,10 +96,16 @@ export default function CalendarPage(){
             <div className="space-y-3">
               {selectedDay === 15 ? (
                 <>
-                  <div className="border-l-4 border-emerald-500 pl-3 py-1 bg-slate-800/50 rounded-r-md">
+                  <button
+                    onClick={() => {
+                      setIsModalOpen(true);
+                      setModalMode("edit");
+                    }}
+                    className="w-full text-left border-l-4 border-emerald-500 pl-3 py-1 bg-slate-800/50 rounded-r-md hover:bg-slate-800 transition-colors block"
+                  >
                     <div className="font-bold text-sm text-slate-200">組織練</div>
                     <div className="text-xs text-slate-400">13:00 - 15:00</div>
-                  </div>
+                  </button>
                   <div className="border-l-4 border-emerald-500 pl-3 py-1 bg-slate-800/50 rounded-r-md">
                     <div className="font-bold text-sm text-slate-200">BBQ準備</div>
                     <div className="text-xs text-slate-400">18:00 - 19:00</div>
@@ -108,6 +122,137 @@ export default function CalendarPage(){
             >
               閉じる
             </button>
+          </div>
+        )}
+
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+            
+            <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative">
+              
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-5">
+                <h3 className="text-lg font-bold text-slate-100">
+                  {modalMode === "add" ? "予定の追加" : "予定の編集"}
+                </h3>
+                
+                {modalMode === "add" ? (
+                  <button 
+                    onClick={() => setIsModalOpen(false)}
+                    className="text-slate-400 hover:text-white transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => {
+                      alert("削除処理（バックエンドでいう DELETE 処理）を実行します");
+                      setIsModalOpen(false);
+                    }}
+                    className="text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 text-xs bg-red-500/10 px-2 py-1 rounded"
+                  >
+                    <span>ゴミ箱</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-4 text-left">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">タイトル</label>
+                  <input 
+                    type="text" 
+                    defaultValue={modalMode === "edit" ? "組織練" : ""} 
+                    placeholder="予定のタイトルを入力"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">年月日</label>
+                  <div className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-400">
+                    2026年6月{selectedDay || "???"}日
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">開始時間</label>
+                    <input 
+                      type="time" 
+                      defaultValue={modalMode === "edit" ? "13:00" : "09:00"}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">終了時間</label>
+                    <input 
+                      type="time" 
+                      defaultValue={modalMode === "edit" ? "15:00" : "10:00"}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">行事実施届</label>
+                        <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
+                            <input type="checkbox" className="w-4 h-4 accent-emerald-500 rounded" />
+                            <span className="text-sm text-slate-200">提出が必要</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">教室（コート）予約</label>
+                        <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
+                            <input type="checkbox" className="w-4 h-4 accent-emerald-500 rounded" />
+                            <span className="text-sm text-slate-200">予約が必要</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">予定の対象（役職）</label>
+                    <select className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                        <option value="all">全員</option>
+                        <option value="captain">キャプテン</option>
+                        <option value="vice-captain">副キャプテン</option>
+                        <option value="girls-captain">女子キャプテン</option>
+                        <option value="treasurer">会計</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">メモ</label>
+                    <textarea 
+                        rows={3}
+                        placeholder="持ち物や連絡事項など"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none"
+                    />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6 border-t border-slate-800 pt-4">
+                <button 
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm py-2 rounded-md transition-colors"
+                >
+                  キャンセル
+                </button>
+                <button 
+                  onClick={() => {
+                    if (modalMode === "add") {
+                      alert("新規登録（バックエンドの POST 処理）を実行します！");
+                    } else {
+                      alert("内容更新（バックエンドの PUT / PATCH 処理）を実行します！");
+                    }
+                    setIsModalOpen(false);
+                  }}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium py-2 rounded-md transition-colors"
+                >
+                  {modalMode === "add" ? "追加する" : "変更を保存"}
+                </button>
+              </div>
+
+            </div>
           </div>
         )}
         </div>
