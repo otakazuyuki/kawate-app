@@ -26,8 +26,12 @@ export default function CalendarPage(){
         }
     };
     const [modalMode,setModalMode]=useState<"add" |"edit"| "soshikiren-setting">("add");
+    const totalDays=new Date(currentYear,currentMonth,0).getDate();
     const dayInMonth=Array.from({length:30},(_,i)=>i+1);
     const weekDays=["月","火","水","木","金","土","日"];
+    const firstDayIndex=new Date(currentYear,currentMonth-1,1).getDay();
+    const blankDaysCount=firstDayIndex===0 ? 6 : firstDayIndex-1;
+    const blankDays=Array.from({length:blankDaysCount})
     return(
         <div className="p-4 max-w-md mx-auto md:max-w-4xl">
             <div className="flex items-center justify-between mb-4">
@@ -99,38 +103,43 @@ export default function CalendarPage(){
                         </div>
                     ))}
                 </div>
-                    <div className="grid grid-cols-7 grid-rows-5 divide-x divide-y divide-slate-800 border-l border-t border-transparent">
-                        {dayInMonth.map((day) =>  {
-                            const hasEvent = day === 15;
-                            return(
-                                <button
-                                    key={day}
-                                    className="min-h-[80px] p-1 flex flex-col justify-between items-start hover:bg-slate-800/50 transition-colors text-left group"
-                                    onClick={() => setSelectedDay(selectedDay === day ? null : day)}
-                                >
-                                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-md ${
-                                        day === 15 ? "bg-emerald-500/20 text-emerald-400 font-bold" : "text-slate-400"
-                                    }`}>
-                                        {day}
-                                    </span>
+                <div className="grid grid-cols-7 grid-rows-5 divide-x divide-y divide-slate-800 border-l border-t border-transparent">
+                    {blankDays.map((_,index)=>(
+                        <div key={`blank-${index}`} className="min-h-[80px] bg-slate-950/40 border-slate-800" />
+                    ))}
+                    {dayInMonth.map((day) => {
+                        const hasEvent = day === 15 && currentMonth === 6; // 15日のイベントはとりあえず6月だけに限定
+                        return (
+                            <button
+                                key={day}
+                                className="min-h-[80px] p-1 flex flex-col justify-between items-start hover:bg-slate-800/50 transition-colors text-left group"
+                                onClick={() => setSelectedDay(selectedDay === day ? null : day)}
+                            >
+                                <span className={`text-xs font-medium px-1.5 py-0.5 rounded-md ${
+                                    day === 15 && currentMonth === 6 ? "bg-emerald-500/20 text-emerald-400 font-bold" : "text-slate-400"
+                                }`}>
+                                    {day}
+                                </span>
 
-                                    <div className="w-full space-y-0.5 mt-1 overflow-hidden">
-                                        {showSoshikiren && [1, 3, 5, 6, 8, 10, 12, 13, 15, 17, 19, 20].includes(day) && (
-                                            <div className="text-[9px] bg-slate-800 text-slate-400 px-1 py-0.5 rounded truncate border-l-2 border-slate-500">
-                                                組織練
-                                            </div>
-                                        )}
+                                <div className="w-full space-y-0.5 mt-1 overflow-hidden">
+                                    {showSoshikiren && 
+                                        (([15, 1, 8, 22, 29].includes(day) && firstDayIndex === 1) || // 月曜始まりの月
+                                        ([1, 3, 5, 6, 8, 10, 12, 13, 15, 17, 19, 20].includes(day) && currentMonth === 6)) && ( // 6月
+                                        <div className="text-[9px] bg-slate-800 text-slate-400 px-1 py-0.5 rounded truncate border-l-2 border-slate-500">
+                                            組織練
+                                        </div>
+                                    )}
 
-                                        {hasEvent && (
-                                            <div className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 py-0.5 rounded truncate border-l-2 border-emerald-500 font-medium">
-                                                BBQ準備
-                                            </div>
-                                        )}
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
+                                    {hasEvent && (
+                                        <div className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 py-0.5 rounded truncate border-l-2 border-emerald-500 font-medium">
+                                            BBQ準備
+                                        </div>
+                                    )}
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
             {selectedDay !== null && (
                 <div className="w-full md:w-80 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-2xl relative">
