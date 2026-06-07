@@ -7,20 +7,64 @@ export default function CalendarPage(){
     const [showSoshikiren,setShowSoshikiren]=useState(true);
     const [selectedDay,setSelectedDay]=useState<number|null>(null);
     const [isModalOpen,setIsModalOpen]=useState(false);
-    const[modalMode,setModalMode]=useState<"add"|"edit">("add");
+    const [currentYear,setCurrentYear]=useState(2026);
+    const [currentMonth,setCurrentMonth]=useState(6);
+    const handlePrevMonth=()=>{
+        if(currentMonth===1){
+            setCurrentMonth(12);
+            setCurrentYear(currentYear-1);
+        }else{
+            setCurrentMonth(currentMonth-1);
+        }
+    };
+    const handleNextMonth=()=>{
+        if(currentMonth===12){
+            setCurrentYear(currentYear+1);
+            setCurrentMonth(1);
+        }else{
+            setCurrentMonth(currentMonth+1);
+        }
+    };
+    const [modalMode,setModalMode]=useState<"add" |"edit"| "soshikiren-setting">("add");
     const dayInMonth=Array.from({length:30},(_,i)=>i+1);
     const weekDays=["月","火","水","木","金","土","日"];
     return(
         <div className="p-4 max-w-md mx-auto md:max-w-4xl">
             <div className="flex items-center justify-between mb-4">
-                <button className="text-xl font-bold flex items-center gap-1 text-slate-100">
-                    2026年6月<span className="text-xs text-slate-400">▼</span>
-                </button>
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={handlePrevMonth}
+                        className="p-1 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-md transition-colors"
+                    >
+                        ◀
+                    </button>
+
+                    <h2 className="text-xl font-bold text-slate-100 min-w-[120px] text-center">
+                        {currentYear}年 {currentMonth}月
+                    </h2>
+
+                    <button 
+                        onClick={handleNextMonth}
+                        className="p-1 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-md transition-colors"
+                    >
+                    ▶
+                    </button>
+                </div>
                 <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs">
-                        <span className="text-slate-300">組織練</span>
+                    <div 
+                        onClick={() => {
+                            setModalMode("soshikiren-setting");
+                            setIsModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 px-3 py-1.5 rounded-full text-xs text-slate-300 transition-colors cursor-pointer group"
+                    >
+                        <span className="group-hover:text-emerald-400 transition-colors">組織練 ⚙️</span>
+  
                         <button
-                            onClick={() => setShowSoshikiren(!showSoshikiren)}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowSoshikiren(!showSoshikiren);
+                            }}
                             className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ${
                                 showSoshikiren ? "bg-emerald-500" : "bg-slate-700"
                             }`}
@@ -132,7 +176,9 @@ export default function CalendarPage(){
               
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-5">
                 <h3 className="text-lg font-bold text-slate-100">
-                  {modalMode === "add" ? "予定の追加" : "予定の編集"}
+                  {modalMode==="add" && "予定を追加"}
+                  {modalMode==="edit" && "予定を編集"}
+                  {modalMode==="soshikiren-setting" && "組織練の設定"}
                 </h3>
                 
                 {modalMode === "add" ? (
@@ -155,81 +201,102 @@ export default function CalendarPage(){
                 )}
               </div>
 
-              <div className="space-y-4 text-left">
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">タイトル</label>
-                  <input 
-                    type="text" 
-                    defaultValue={modalMode === "edit" ? "組織練" : ""} 
-                    placeholder="予定のタイトルを入力"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  />
-                </div>
+                {modalMode === "soshikiren-setting" ? (
+                    <div className="space-y-4 text-left">
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                            ここで設定した曜日と時間が、毎月のカレンダーに自動的に「組織練」として反映されます。
+                        </p>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">年月日</label>
-                  <div className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-400">
-                    2026年6月{selectedDay || "???"}日
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">開始時間</label>
-                    <input 
-                      type="time" 
-                      defaultValue={modalMode === "edit" ? "13:00" : "09:00"}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">終了時間</label>
-                    <input 
-                      type="time" 
-                      defaultValue={modalMode === "edit" ? "15:00" : "10:00"}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1">行事実施届</label>
-                        <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
-                            <input type="checkbox" className="w-4 h-4 accent-emerald-500 rounded" />
-                            <span className="text-sm text-slate-200">提出が必要</span>
-                        </div>
+                        {["月", "水", "金"].map((dow) => (
+                            <div key={dow} className="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-md p-3">
+                                <div className="flex items-center gap-2">
+                                    <input type="checkbox" defaultChecked className="w-4 h-4 accent-emerald-500 rounded" />
+                                    <span className="text-sm font-medium text-slate-200">{dow}曜日</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input type="time" defaultValue="13:00" className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-100" />
+                                    <span className="text-xs text-slate-500">〜</span>
+                                    <input type="time" defaultValue="15:00" className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-100" />
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1">教室（コート）予約</label>
-                        <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
-                            <input type="checkbox" className="w-4 h-4 accent-emerald-500 rounded" />
-                            <span className="text-sm text-slate-200">予約が必要</span>
+                ) : (
+                        <div className="space-y-4 text-left">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1">タイトル</label>
+                                <input 
+                                    type="text" 
+                                    defaultValue={modalMode === "edit" ? "組織練" : ""} 
+                                    placeholder="予定のタイトルを入力"
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1">年月日</label>
+                                <div className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-400">
+                                    2026年6月{selectedDay || "???"}日
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">開始時間</label>
+                                    <input 
+                                        type="time" 
+                                        defaultValue={modalMode === "edit" ? "13:00" : "09:00"}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">終了時間</label>
+                                    <input 
+                                        type="time" 
+                                        defaultValue={modalMode === "edit" ? "15:00" : "10:00"}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">行事実施届</label>
+                                    <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
+                                        <input type="checkbox" className="w-4 h-4 accent-emerald-500 rounded" />
+                                        <span className="text-sm text-slate-200">提出が必要</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-400 mb-1">教室（コート）予約</label>
+                                    <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
+                                        <input type="checkbox" className="w-4 h-4 accent-emerald-500 rounded" />
+                                        <span className="text-sm text-slate-200">予約が必要</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1">予定の対象（役職）</label>
+                                <select className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                                    <option value="all">全員</option>
+                                    <option value="captain">キャプテン</option>
+                                    <option value="vice-captain">副キャプテン</option>
+                                    <option value="girls-captain">女子キャプテン</option>
+                                    <option value="treasurer">会計</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1">メモ</label>
+                                <textarea 
+                                    rows={3}
+                                    placeholder="持ち物や連絡事項など"
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none"
+                                />
+                            </div>
                         </div>
-                    </div>
-                </div>
-
-                <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">予定の対象（役職）</label>
-                    <select className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                        <option value="all">全員</option>
-                        <option value="captain">キャプテン</option>
-                        <option value="vice-captain">副キャプテン</option>
-                        <option value="girls-captain">女子キャプテン</option>
-                        <option value="treasurer">会計</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1">メモ</label>
-                    <textarea 
-                        rows={3}
-                        placeholder="持ち物や連絡事項など"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none"
-                    />
-                </div>
-              </div>
-
+                )}
               <div className="flex gap-3 mt-6 border-t border-slate-800 pt-4">
                 <button 
                   onClick={() => setIsModalOpen(false)}
@@ -251,7 +318,6 @@ export default function CalendarPage(){
                   {modalMode === "add" ? "追加する" : "変更を保存"}
                 </button>
               </div>
-
             </div>
           </div>
         )}
