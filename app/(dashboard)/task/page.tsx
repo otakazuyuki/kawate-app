@@ -103,7 +103,7 @@ export default function TaskPage() {
     }
   };
 
-  // 💡 文字列内の不要な記号を完璧にお掃除して仕分けるロジック
+  //文字列内の不要な記号を仕分けるロジック
   const getEventsForRole = (roleId: string) => {
     return events.filter((event) => {
       let rawStr = "";
@@ -118,19 +118,14 @@ export default function TaskPage() {
 
       if (!rawStr) return false;
 
-      // 💡 [ ] や { } や " や ' をすべて消し去り、純粋なカンマ区切りの英単語リストにする
-      // 例: '["officers","captain"]'  =>  "officers,captain"
       const cleanStr = rawStr.replace(/[\[\]\{\}"']/g, "");
       const roles = cleanStr.split(",").map(r => r.trim());
 
-      // 1. 閲覧対象の先頭(添字0)が "all" の場合は全体用なので非表示
       if (roles[0] === "all") return false;
 
-      // 2. 「役員全員がやる仕事」を弾く（すべての役職名が配列に含まれている場合は共通雑務とみなす）
       const hasAllRoles = ROLES.every(r => roles.includes(r.id));
       if (hasAllRoles) return false;
 
-      // 3. 添字1以降に指定の役職IDがピンポイントで含まれているか判定
       return roles.includes(roleId);
     });
   };
