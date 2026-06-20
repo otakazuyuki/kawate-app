@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {Calendar,FileText,Mail,FilePlus,CheckSquare} from "lucide-react";
 
-const navItems=[{label:"ホーム",href:"/calendar",icon:Calendar},{label:"引き継ぎ",href:"/hikitugi",icon:FileText},{label:"メール",href:"/email",icon:Mail},{label:"書類作成",href:"/document",icon:FilePlus},{label:"タスク",href:"/task",icon:CheckSquare}]
+const navItems=[{label:"ホーム",href:"/calendar",icon:Calendar},{label:"引き継ぎ",href:"/hikitugi",icon:FileText},{label:"メール",href:"/email",icon:Mail},{label:"書類作成",href:"/document",icon:FilePlus},{label:"タスク",href:"/task",icon:CheckSquare},{label:"設定",href:"/setting",icon:FilePlus}]
 
 export default function GlobalNav(){
     const pathname=usePathname();
