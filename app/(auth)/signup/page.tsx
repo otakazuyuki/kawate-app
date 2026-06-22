@@ -55,9 +55,15 @@ export default function SignInPage() {
       // 3. 照合を通過したら Supabase Auth でアカウント作成
       // メタデータ（user_metadata）に役職情報を焼き付ける
       const { data, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
-      });
+  email: email.trim(),
+  password: password,
+  options: {
+    // 🔥 ここを追加！
+    data: {
+      requested_role: userType
+    }
+  }
+});
 
       if (authError) {
         alert(`アカウント作成失敗: ${authError.message}`);

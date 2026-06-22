@@ -69,6 +69,26 @@ export default function CalendarPage(){
     const blankDaysCount = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
     const blankDays = Array.from({ length: blankDaysCount });
 
+    const [userMetadata, setUserMetadata] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // user_metadata の中身を丸ごとステートに入れる
+        setUserMetadata(user.user_metadata);
+      }
+      setLoading(false);
+    };
+    fetchUser();
+  }, []);
+
+  const isOfficer=userMetadata?.role==='officer';
+  const isReadOnly=isPastEvent||!isOfficer;
+
+
+
+
     const fetchEvents = async () => {
         setLoading(true);
         const startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
@@ -303,8 +323,9 @@ export default function CalendarPage(){
                         <h2 className="text-xl font-bold min-w-[120px] text-center">{currentYear}年 {currentMonth}月</h2>
                     <button onClick={() => { setSelectedDay(null); if(currentMonth===12){setCurrentMonth(1); setCurrentYear(currentYear+1);}else{setCurrentMonth(currentMonth+1);} }} className="p-2 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-md transition-colors">▶</button>
                 </div>
-        
-                <div className="flex items-center gap-3">
+
+                {isOfficer && (
+                    <div className="flex items-center gap-3">
                     <button onClick={() => openModal("soshikiren-setting")} className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 px-3 py-1.5 rounded-full text-xs text-slate-300 transition-colors cursor-pointer font-medium">
                         <span>組織練一括設定 ⚙️</span>
                     </button>
@@ -313,6 +334,9 @@ export default function CalendarPage(){
                         <Plus className="w-5 h-5" />
                     </button>
                 </div>
+                )}
+        
+                
             </div>
 
 
@@ -378,7 +402,7 @@ export default function CalendarPage(){
                             {modalMode === "soshikiren-setting" && "組織練一括設定"}
                         </h3>
               
-                        {modalMode === "edit" && (
+                        {modalMode === "edit" && isOfficer &&(
                             <button type="button" onClick={handleDeleteEvent} className="text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 text-xs bg-red-500/10 px-2 py-1 rounded">
                                 <Trash2 className="w-3 h-3" />
                                 <span>削除</span>
@@ -447,7 +471,7 @@ export default function CalendarPage(){
               <div className="space-y-3 text-left">
                 <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1">タイトル</label>
-                  <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="予定のタイトルを入力" className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required disabled={isPastEvent} />
+                  <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="予定のタイトルを入力" className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required disabled={isReadOnly} />
                 </div>
 
                 <div>
@@ -460,11 +484,11 @@ export default function CalendarPage(){
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">開始時間</label>
-                    <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required disabled={isPastEvent} />
+                    <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required disabled={isReadOnly} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">終了時間</label>
-                    <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required disabled={isPastEvent} />
+                    <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required disabled={isReadOnly} />
                   </div>
                 </div>
 
@@ -472,14 +496,14 @@ export default function CalendarPage(){
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">行事実施届</label>
                     <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2 cursor-pointer">
-                      <input type="checkbox" checked={requiresForm} onChange={(e) => setRequiresForm(e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded" disabled={isPastEvent} />
+                      <input type="checkbox" checked={requiresForm} onChange={(e) => setRequiresForm(e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded" disabled={isReadOnly} />
                       <span className="text-xs text-slate-200">提出が必要</span>
                     </label>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1">教室（コート）予約</label>
                     <label className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2 cursor-pointer">
-                      <input type="checkbox" checked={requiresCourt} onChange={(e) => setRequiresCourt(e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded" disabled={isPastEvent} />
+                      <input type="checkbox" checked={requiresCourt} onChange={(e) => setRequiresCourt(e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded" disabled={isReadOnly} />
                       <span className="text-xs text-slate-200">予約が必要</span>
                     </label>
                   </div>
@@ -493,7 +517,7 @@ export default function CalendarPage(){
                             type="radio" 
                             name="targetScope" 
                             checked={targetRole[0] === "all"} 
-                            disabled={isPastEvent}
+                            disabled={isReadOnly}
                             onChange={() => setTargetRole(["all"])} // 全員を選んだら役職は全クリア
                             className="accent-emerald-500 w-4 h-4" 
                         />
@@ -504,10 +528,11 @@ export default function CalendarPage(){
                             type="radio" 
                             name="targetScope" 
                             checked={targetRole[0] === "officers"} 
-                            disabled={isPastEvent}
+                            disabled={isReadOnly}
                             // 🔔 手書きではなく、DBから取ってきた全役職（dbRoles）をセットする
                             onChange={() => setTargetRole(["officers", ...dbRoles])} 
                             className="accent-emerald-500 w-4 h-4" 
+
                         />
                         役員全員に表示
                     </label>
@@ -547,25 +572,29 @@ export default function CalendarPage(){
 
                 <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1">メモ</label>
-                  <textarea rows={2} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="持ち物や連絡事項など" className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none resize-none" disabled={isPastEvent} />
+                  <textarea rows={2} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="持ち物や連絡事項など" className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none resize-none" disabled={isReadOnly} />
                 </div>
               </div>
             )}
 
                     <div className="flex gap-3 mt-5 border-t border-slate-800 pt-3">
                         <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-md transition-colors">
-                            {modalMode === "edit" && isPastEvent ? "閉じる" : "キャンセル"}
+                            {isReadOnly ? "閉じる" : "キャンセル"}
                         </button>
               
-                        {(!isPastEvent || modalMode === "soshikiren-setting") && (
-                            <button type="submit" className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium py-2 rounded-md transition-colors">
-                                {modalMode === "soshikiren-setting" ? "完了ボタンで追加" : modalMode === "add" ? "追加する" : "変更を保存"}
-                            </button>
-                        )}
+                        {!isReadOnly && (
+        <button type="submit" className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium py-2 rounded-md transition-colors">
+            {modalMode === "soshikiren-setting" ? "完了ボタンで追加" : modalMode === "add" ? "追加する" : "変更を保存"}
+        </button>
+    )}
                     </div>
                 </form>
             </div>
         )}
+       
     </div>
+    
+        
+
   );
 }
