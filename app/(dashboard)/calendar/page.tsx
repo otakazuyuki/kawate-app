@@ -49,6 +49,8 @@ export default function CalendarPage(){
     const [bulkStartDate,setBulkStartDate]=useState(TODAY_STR);
     const [bulkEndDate,setBulkEndDate]=useState("2026-07-31");
 
+    const [dbRoles, setDbRoles] = useState<string[]>([]);
+
     const [daySettings,setDaySettings]=useState<{[key:number]:DaySetting}>({
         0:{enabled:true,startTime:"13:00",endTime:"15:00"},
         1:{enabled:false,startTime:"13:00",endTime:"15:00"},
@@ -85,6 +87,45 @@ export default function CalendarPage(){
         }
         setLoading(false);
     };
+
+    useEffect(() => {
+    const fetchCurrentGenerationRoles = async () => {
+      try {
+        // 1. ログイン中のユーザー情報を取得（メタデータから期を取り出す）
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        // ログインしていない場合や、期（generation）が設定されていない場合は処理をスキップ
+        const userGen = user?.user_metadata?.generation;
+        if (!userGen) {
+          console.warn("ログインユーザーの『期（generation）』が取得できませんでした。");
+          return;
+        }
+
+        // 2. Supabaseの officers テーブルから、その「期」に合致するデータだけを絞り込む
+        const { data, error } = await supabase
+          .from("officers")
+          .select("role")
+          .eq("generation", userGen); // 🎁 ここで「ログイン中の人と、同じ期の名簿」に絞り込んでいます！
+
+        if (error) {
+          console.error("該当期の役職リストの取得に失敗しました:", error);
+          return;
+        }
+
+        if (data) {
+          // 重複を排除してStateにセット
+          const uniqueRoles = Array.from(
+            new Set(data.map((d) => d.role).filter(Boolean))
+          );
+          setDbRoles(uniqueRoles);
+        }
+      } catch (err) {
+        console.error("予期せぬエラーが発生しました:", err);
+      }
+    };
+
+    fetchCurrentGenerationRoles();
+  }, []);
 
     useEffect(() => {
         fetchEvents();
@@ -464,7 +505,8 @@ export default function CalendarPage(){
                             name="targetScope" 
                             checked={targetRole[0] === "officers"} 
                             disabled={isPastEvent}
-                            onChange={() => setTargetRole(["officers","captain","vice-captain","girls-captain","treasurer"])} 
+                            // 🔔 手書きではなく、DBから取ってきた全役職（dbRoles）をセットする
+                            onChange={() => setTargetRole(["officers", ...dbRoles])} 
                             className="accent-emerald-500 w-4 h-4" 
                         />
                         役員全員に表示
@@ -475,29 +517,26 @@ export default function CalendarPage(){
                     <div className="bg-slate-950 border border-slate-800 rounded-md p-3 space-y-2 animate-in fade-in duration-150">
                         <label className="block text-[11px] font-medium text-slate-500 border-b border-slate-800 pb-1 mb-1">担当役職（複数選択可）</label>
                         <div className="grid grid-cols-2 gap-2">
-                            {[
-                                { label: "キャプテン", id: "captain" },
-                                { label: "副キャプテン", id: "vice-captain" },
-                                { label: "女子キャプテン", id: "girls-captain" },
-                                { label: "会計", id: "treasurer" },
-                            ].map((role) => {
-                                const isChecked = targetRole.includes(role.id);
+                            {/* 🔔 手書きの配列ではなく、dbRoles（文字列の配列）を直接ループさせる */}
+                            {dbRoles.map((roleName) => {
+                                const isChecked = targetRole.includes(roleName);
                                 return (
-                                    <label key={role.id} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer hover:text-white transition-colors">
+                                    <label key={roleName} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer hover:text-white transition-colors">
                                         <input
                                             type="checkbox"
                                             checked={isChecked}
                                             disabled={isPastEvent}
                                             onChange={() => {
                                                 if (isChecked) {
-                                                    setTargetRole(targetRole.filter(r => r !== role.id));
+                                                    setTargetRole(targetRole.filter(r => r !== roleName));
                                                 } else {
-                                                    setTargetRole([...targetRole, role.id]);
+                                                    setTargetRole([...targetRole, roleName]);
                                                 }
                                             }}
                                             className="w-3.5 h-3.5 accent-emerald-500 rounded"
                                         />
-                                        {role.label}
+                                        {/* 🔔 DBに入っている文字（例: キャプテン）がそのまま表示されます */}
+                                        {roleName}
                                     </label>
                                 );
                             })}

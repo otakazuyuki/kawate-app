@@ -24,30 +24,28 @@ interface CalendarEvent {
   target_role: any;
 }
 
-const ROLES = [
-  { id: "captain", label: "キャプテン", badge: "border-emerald-500 bg-emerald-500/10 text-emerald-400" },
-  { id: "vice-captain", label: "副キャプテン", badge: "border-blue-500 bg-blue-500/10 text-blue-400" },
-  { id: "girls-captain", label: "女子キャプテン", badge: "border-pink-500 bg-pink-500/10 text-pink-400" },
-  { id: "treasurer", label: "会計", badge: "border-amber-500 bg-amber-500/10 text-amber-400" },
-];
+// 動的生成する役職の型定義
+interface DynamicRole {
+  id: string;   // 日本語の役職名（例: "キャプテン"）
+  label: string; // 表示用の役職名
+  badge: string; // 装飾用CSSクラス
+}
 
 export default function TaskPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [candidates, setCandidates] = useState<string[]>([
-    "キャプテン",
-    "副キャプテン",
-    "女子キャプテン",
-    "会計",
-  ]);
+  // 🔔 動的役職リストとルーレット対象
+  const [roles, setRoles] = useState<DynamicRole[]>([]);
+  const [candidates, setCandidates] = useState<string[]>([]);
+  
   const [newCandidate, setNewCandidate] = useState("");
   const [isRolling, setIsRolling] = useState(false);
   const [rollingIndex, setRollingIndex] = useState<number | null>(null);
   const [winner, setWinner] = useState<string | null>(null);
 
+  // 1. 直近のイベント一覧をSupabaseから取得する関数
   const fetchUpcomingEvents = async () => {
-    setLoading(true);
     const { data, error } = await supabase
       .from("events")
       .select("id, title, date, start_time, end_time, target_role")
@@ -60,13 +58,72 @@ export default function TaskPage() {
     } else {
       setEvents(data || []);
     }
-    setLoading(false);
   };
 
+  // 2. 画面起動時にログインユーザーの「期」を調べ、データを初期化する
   useEffect(() => {
-    fetchUpcomingEvents();
+    const initializePageData = async () => {
+      setLoading(true);
+      try {
+        // ログイン中のユーザー情報を取得（メタデータから期を取り出す）
+        const { data: { user } } = await supabase.auth.getUser();
+        const userGen = user?.user_metadata?.generation;
+        
+        if (!userGen) {
+          console.warn("ログインユーザーの『期（generation）』が取得できませんでした。");
+          // 期がなくてもイベントだけは取得してローディングを終わらせる
+          await fetchUpcomingEvents();
+          setLoading(false);
+          return;
+        }
+
+        // Supabaseの officers テーブルから、同じ期の役職名だけを重複なく取得
+        const { data: officerData, error: dbError } = await supabase
+          .from("officers")
+          .select("role")
+          .eq("generation", userGen);
+
+        if (dbError) {
+          console.error("該当期の役職取得失敗:", dbError.message);
+        } else if (officerData) {
+          const uniqueRoleNames = Array.from(
+            new Set(officerData.map((o) => o.role).filter(Boolean))
+          );
+
+          // 役職ごとに枠の色をきれいに割り振るためのカラーパレット
+          const badgeStyles = [
+            "border-emerald-500 bg-emerald-500/10 text-emerald-400",
+            "border-blue-500 bg-blue-500/10 text-blue-400",
+            "border-pink-500 bg-pink-500/10 text-pink-400",
+            "border-amber-500 bg-amber-500/10 text-amber-400",
+            "border-purple-500 bg-purple-500/10 text-purple-400",
+          ];
+
+          // 画面表示用のオブジェクト配列に整形
+          const formattedRoles = uniqueRoleNames.map((roleName, index) => ({
+            id: roleName, 
+            label: roleName, 
+            badge: badgeStyles[index % badgeStyles.length],
+          }));
+
+          setRoles(formattedRoles);
+          setCandidates(uniqueRoleNames); // ルーレットの初期値にもその期の役職を設定
+        }
+
+        // 最後に予定一覧を取得
+        await fetchUpcomingEvents();
+
+      } catch (err) {
+        console.error("予期せぬエラー:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializePageData();
   }, []);
 
+  // ルーレットの開始ロジック
   const startRoulette = () => {
     if (candidates.length === 0) return;
     setIsRolling(true);
@@ -89,6 +146,7 @@ export default function TaskPage() {
     }, 100);
   };
 
+  // ルーレットの候補追加
   const addCandidate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCandidate.trim()) return;
@@ -96,14 +154,16 @@ export default function TaskPage() {
     setNewCandidate("");
   };
 
+  // ルーレットの候補削除
   const removeCandidate = (index: number) => {
-    setCandidates(candidates.filter((_, i) => i !== index));
-    if (winner && !candidates.filter((_, i) => i !== index).includes(winner)) {
+    const updated = candidates.filter((_, i) => i !== index);
+    setCandidates(updated);
+    if (winner && !updated.includes(winner)) {
       setWinner(null);
     }
   };
 
-  //文字列内の不要な記号を仕分けるロジック
+  // 文字列（または配列）内の不要な記号を仕分けて日本語で役職タスクを判定するロジック
   const getEventsForRole = (roleId: string) => {
     return events.filter((event) => {
       let rawStr = "";
@@ -119,14 +179,18 @@ export default function TaskPage() {
       if (!rawStr) return false;
 
       const cleanStr = rawStr.replace(/[\[\]\{\}"']/g, "");
-      const roles = cleanStr.split(",").map(r => r.trim());
+      const targetRoles = cleanStr.split(",").map(r => r.trim());
 
-      if (roles[0] === "all") return false;
+      // 全体向けの予定は除外
+      if (targetRoles[0] === "all") return false;
 
-      const hasAllRoles = ROLES.every(r => roles.includes(r.id));
-      if (hasAllRoles) return false;
+      // 現在の全役職に一斉配信されている共通の予定は除外
+      if (roles.length > 0 && roles.every(r => targetRoles.includes(r.id))) {
+        return false;
+      }
 
-      return roles.includes(roleId);
+      // 日本語の役職名（roleId）がカレンダーの対象に含まれているかチェック
+      return targetRoles.includes(roleId);
     });
   };
 
@@ -139,6 +203,7 @@ export default function TaskPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
+        {/* 左側：個別タスク表示エリア */}
         <div className="md:col-span-2 space-y-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-4 border-b border-slate-800/60 pb-3">
@@ -160,43 +225,49 @@ export default function TaskPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {ROLES.map((role) => {
-                  const roleEvents = getEventsForRole(role.id);
-                  return (
-                    <div key={role.id} className="bg-slate-950 border border-slate-800 rounded-lg p-3 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
-                          <span className="text-xs font-bold text-slate-200">{role.label}</span>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${role.badge} font-semibold`}>
-                            個別: {roleEvents.length}件
-                          </span>
-                        </div>
+                {roles.length > 0 ? (
+                  roles.map((role) => {
+                    const roleEvents = getEventsForRole(role.id);
+                    return (
+                      <div key={role.id} className="bg-slate-950 border border-slate-800 rounded-lg p-3 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
+                            <span className="text-xs font-bold text-slate-200">{role.label}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${role.badge} font-semibold`}>
+                              個別: {roleEvents.length}件
+                            </span>
+                          </div>
 
-                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                          {roleEvents.length > 0 ? (
-                            roleEvents.map((event) => (
-                              <div key={event.id} className="text-[11px] bg-slate-900 border border-slate-800/60 rounded p-1.5 hover:border-slate-700 transition-colors">
-                                <div className="font-medium text-slate-300 truncate">{event.title}</div>
-                                <div className="text-[10px] text-slate-500 flex justify-between mt-0.5">
-                                  <span>{event.date.slice(5)}</span>
-                                  <span>{event.start_time.slice(0, 5)}~</span>
+                          <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                            {roleEvents.length > 0 ? (
+                              roleEvents.map((event) => (
+                                <div key={event.id} className="text-[11px] bg-slate-900 border border-slate-800/60 rounded p-1.5 hover:border-slate-700 transition-colors">
+                                  <div className="font-medium text-slate-300 truncate">{event.title}</div>
+                                  <div className="text-[10px] text-slate-500 flex justify-between mt-0.5">
+                                    <span>{event.date.slice(5)}</span>
+                                    <span>{event.start_time.slice(0, 5)}~</span>
+                                  </div>
                                 </div>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="text-[10px] text-slate-600 text-center py-4">該当する個別タスクはありません</div>
-                          )}
+                              ))
+                            ) : (
+                              <div className="text-[10px] text-slate-600 text-center py-4">該当する個別タスクはありません</div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <div className="text-xs text-slate-500 text-center py-8 col-span-2">
+                    該当する期の役職データがSupabaseに見つかりませんでした。
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
 
-        {/* ルーレット部分 */}
+        {/* 右側：ルーレットエリア */}
         <div className="space-y-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between h-full">
             <div>
@@ -220,7 +291,7 @@ export default function TaskPage() {
                     <Shuffle className="w-5 h-5 text-slate-600" />
                     <span>ボタンを押してスタート</span>
                   </div>
-                ) }
+                )}
               </div>
 
               <button 

@@ -24,29 +24,93 @@ export default function SettingPage() {
 
   // --- 2. 役員名簿用ステート ---
   const [officerTargetGen, setOfficerTargetGen] = useState(21);
-  const [officerRoles, setOfficerRoles] = useState<string[]>(["キャプテン", "副キャプテン", "女子キャプテン", "会計"]);
+  const [officerRoles, setOfficerRoles] = useState<string[]>(["キャプテン", "副キャプテン", "女子キャプテン", "会計帳簿","会計補佐","ボール係","コート係","記録係","保健係","パンフレット係"]);
   const [newRoleInput, setNewRoleInput] = useState("");
   const [officerGrid, setOfficerGrid] = useState<string[][]>(
     ["キャプテン", "副キャプテン", "女子キャプテン", "会計"].map(role => [role, "", "", ""])
   );
 
-  // --- 3. 外部連絡先用ステート (★6列に変更: 期を個別に入力) ---
+  // --- 3. 外部連絡先用ステート ---
   const contactHeaders = ["役職(顧問など)", "名前", "所属", "メールアドレス", "電話番号", "期(OBの代など)"];
   const [contactGrid, setContactGrid] = useState<string[][]>(Array(5).fill(null).map(() => ["", "", "", "", "", ""]));
 
-  // 🔔 画面起動時に各種初期データを読み込む
+  // 📥 🌟【新しく追加】部員データをSupabaseから全件取得してグリッドにセットする関数
+  const fetchAllMembers = async () => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .order("student_number", { ascending: true });
+
+    if (error) {
+      console.error("部員データ取得失敗:", error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      setMemberGrid(data.map(d => [
+        d.student_number || "",
+        d.name || "",
+        d.name_kana || "",
+        d.gender || "",
+        d.email || "",
+        d.phone_number || "",
+        d.department || "",
+        d.grade ? String(d.grade) : "",
+        d.experience || ""
+      ]));
+    } else {
+      // データがない場合は空の5行を表示
+      setMemberGrid(Array(5).fill(null).map(() => Array(9).fill("")));
+    }
+  };
+
+  // 👑 役員データをSupabaseから取得する関数
+  const fetchOfficersForGen = async (gen: number) => {
+    const { data, error } = await supabase
+      .from("officers")
+      .select("*")
+      .eq("generation", gen);
+
+    if (error) {
+      console.error("役員データ取得失敗:", error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const roles = data.map(d => d.role);
+      setOfficerRoles(roles);
+      setOfficerGrid(data.map(d => [d.role, d.name || "", d.email || "", d.phone_number || ""]));
+    } else {
+      const defaultRoles = ["主将", "副主将", "女子キャプテン", "会計帳簿","会計補佐","ボール係","コート係","記録係","保健係","パンフレット係"];
+      setOfficerRoles(defaultRoles);
+      setOfficerGrid(defaultRoles.map(role => [role, "", "", ""]));
+    }
+  };
+
+  // 🔔 画面起動時の初期データ読込（マウント時に1回だけ実行）
   useEffect(() => {
+    // 1. localStorageから保存された期を読み出す
     const savedGen = localStorage.getItem("current_generation");
+    let targetGen = 21; // デフォルト値
+
     if (savedGen) {
       const genNum = parseInt(savedGen, 10);
+      targetGen = genNum;
       setCurrentGeneration(genNum);
       setOfficerTargetGen(genNum);
     }
-    // 連絡先は全件を最初に自動で読み込む
+
+    // 2. 登録されている部員データを自動で引っ張ってくる！
+    fetchAllMembers();
+
+    // 3. 役員名簿を呼び出す
+    fetchOfficersForGen(targetGen);
+
+    // 4. 連絡先の読込
     fetchAllContacts();
   }, []);
 
-  // 🔔 役員の指定「期」が切り替わったら自動でSupabaseから読込
+  // 🔔 ユーザーが手動で編集対象の「期」を切り替えた時に自動で読込
   useEffect(() => {
     fetchOfficersForGen(officerTargetGen);
   }, [officerTargetGen]);
@@ -90,7 +154,7 @@ export default function SettingPage() {
   };
 
   // ==========================================
-  // 📥 1. 部員名簿の一括登録 (profiels)
+  // 📥 1. 部員名簿の一括登録 (profiles)
   // ==========================================
   const saveMembers = async () => {
     setIsLoading(true);
@@ -103,9 +167,8 @@ export default function SettingPage() {
     }
 
     try {
-      // 💥 先に profiels テーブルのデータを全て削除する
       const { error: deleteError } = await supabase
-        .from("profiels")
+        .from("profiles")
         .delete()
         .neq("student_number", "");
 
@@ -123,11 +186,12 @@ export default function SettingPage() {
         experience: row[8],
       }));
 
-      const { error: insertError } = await supabase.from("profiels").insert(insertData);
+      const { error: insertError } = await supabase.from("profiles").insert(insertData);
       if (insertError) throw insertError;
 
       showToast("success", `既存の名簿を全削除し、新しく ${insertData.length} 名の部員データを登録しました！`);
-      setMemberGrid(Array(5).fill(null).map(() => Array(9).fill("")));
+      // 🌟 再度Supabaseから取得し直して画面を最新状態にする
+      fetchAllMembers();
     } catch (error: any) {
       showToast("error", `処理に失敗しました: ${error.message}`);
     } finally {
@@ -136,30 +200,8 @@ export default function SettingPage() {
   };
 
   // ==========================================
-  // 👑 2. 役員名簿の取得と上書き保存 (officers)
+  // 👑 2. 役員名簿の上書き保存 (officers)
   // ==========================================
-  const fetchOfficersForGen = async (gen: number) => {
-    const { data, error } = await supabase
-      .from("officers")
-      .select("*")
-      .eq("generation", gen);
-
-    if (error) {
-      console.error("役員データ取得失敗:", error);
-      return;
-    }
-
-    if (data && data.length > 0) {
-      const roles = data.map(d => d.role);
-      setOfficerRoles(roles);
-      setOfficerGrid(data.map(d => [d.role, d.name || "", d.email || "", d.phone_number || ""]));
-    } else {
-      const defaultRoles = ["キャプテン", "副キャプテン", "女子キャプテン", "会計"];
-      setOfficerRoles(defaultRoles);
-      setOfficerGrid(defaultRoles.map(role => [role, "", "", ""]));
-    }
-  };
-
   const saveOfficers = async () => {
     setIsLoading(true);
     const validRows = officerGrid.filter(row => row[1].trim() !== "");
@@ -209,7 +251,6 @@ export default function SettingPage() {
     }
 
     if (data && data.length > 0) {
-      // データベースから取得した値をグリッドにマッピング (期も文字列にして末尾に結合)
       setContactGrid(data.map(d => [
         d.role || "", 
         d.name || "", 
@@ -225,14 +266,13 @@ export default function SettingPage() {
 
   const saveContacts = async () => {
     setIsLoading(true);
-    const validRows = contactGrid.filter(row => row[1].trim() !== ""); // 名前が入っている行を対象
+    const validRows = contactGrid.filter(row => row[1].trim() !== "");
 
     try {
-      // 💥 連絡先リストを一度すべてクリア（スクラップ＆ビルド）
       const { error: deleteError } = await supabase
         .from("contacts")
         .delete()
-        .neq("name", ""); // すべての名前を対象に削除
+        .neq("name", "");
 
       if (deleteError) throw deleteError;
 
@@ -243,7 +283,7 @@ export default function SettingPage() {
           affiliation: row[2] || null,
           email: row[3] || null,
           phone_number: row[4] || null,
-          generation: row[5] ? parseInt(row[5], 10) : null // 👈 各行に入力された「期」を個別にパースして保存
+          generation: row[5] ? parseInt(row[5], 10) : null
         }));
 
         const { error: insertError } = await supabase.from("contacts").insert(insertData);
@@ -275,6 +315,15 @@ export default function SettingPage() {
     setOfficerRoles([...officerRoles, newRoleInput.trim()]);
     setOfficerGrid([...officerGrid, [newRoleInput.trim(), "", "", ""]]);
     setNewRoleInput("");
+  };
+
+  const removeOfficerRole = (roleToRemove: string) => {
+    if (!confirm(`役職「${roleToRemove}」をリストから削除しますか？\n（保存ボタンを押すまでSupabaseには反映されません）`)) return;
+    
+    // 1. 役職のバッジ一覧から除外
+    setOfficerRoles(officerRoles.filter(role => role !== roleToRemove));
+    // 2. 入力グリッド（表）の行からも除外
+    setOfficerGrid(officerGrid.filter(row => row[0] !== roleToRemove));
   };
 
   return (
@@ -324,7 +373,7 @@ export default function SettingPage() {
             <div className="bg-red-500/5 border border-red-500/20 p-3 rounded-lg flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
               <div className="text-xs text-slate-400">
-                <span className="text-red-400 font-bold">⚠️ 仕様注意:</span> 保存ボタンを押すと、現在登録されている部員データ（`profiels`）は**すべて上書き消去**され、新しく入力したリストのみに完全に入れ替わります。退部した部員のログイン権限を自動剥奪するための仕様です。
+                <span className="text-red-400 font-bold">⚠️ 仕様注意:</span> 保存ボタンを押すと、現在登録されている部員データ（`profiles`）は**すべて上書き消去**され、新しく入力したリストのみに完全に入れ替わります。退部した部員のログイン権限を自動剥奪するための仕様です。
               </div>
             </div>
 
@@ -386,10 +435,18 @@ export default function SettingPage() {
             <div className="flex flex-wrap gap-2 items-center bg-slate-950 p-2 rounded-lg border border-slate-800">
               <span className="text-[11px] text-slate-500 font-bold px-1">現在の役職枠:</span>
               {officerRoles.map((role, idx) => (
-                <span key={idx} className="bg-slate-900 border border-slate-800 px-2 py-1 rounded text-[11px] text-slate-300">
-                  {role}
-                </span>
-              ))}
+  <span key={idx} className="bg-slate-900 border border-slate-800 pl-2 pr-1 py-1 rounded text-[11px] text-slate-300 flex items-center gap-1">
+    <span>{role}</span>
+    {/* ❌ 削除ボタン */}
+    <button 
+      onClick={() => removeOfficerRole(role)} 
+      className="text-slate-500 hover:text-red-400 p-0.5 rounded transition-colors cursor-pointer"
+      title={`${role}を削除`}
+    >
+      <Trash2 className="w-3 h-3" />
+    </button>
+  </span>
+))}
               <div className="flex items-center gap-1 ml-auto">
                 <input type="text" value={newRoleInput} onChange={(e) => setNewRoleInput(e.target.value)} placeholder="新しい役職" className="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-[11px] focus:outline-none w-24 text-slate-200" />
                 <button onClick={addOfficerRole} className="p-1 bg-purple-600 hover:bg-purple-500 rounded text-white cursor-pointer"><Plus className="w-3 h-3" /></button>
@@ -435,7 +492,7 @@ export default function SettingPage() {
           </div>
         )}
 
-        {/* TAB 3: 外部連絡先登録（★全体管理・各行に期を個別入力する形に修正） */}
+        {/* TAB 3: 外部連絡先登録 */}
         {activeTab === "contact" && (
           <div className="space-y-4">
             <div>

@@ -67,12 +67,36 @@ export default function MailPage() {
   // 🔔 起動時処理
   useEffect(() => {
     const savedGen = localStorage.getItem("current_generation");
+    let targetGen = 21;
     if (savedGen) {
-      setCurrentGeneration(parseInt(savedGen, 10));
+      targetGen = parseInt(savedGen, 10);
+      setCurrentGeneration(targetGen);
     }
     fetchRolesFromContacts();
     fetchDrafts();
+    // 🌟 ログイン中の人（設定期の役員）の情報を引き抜く
+    fetchLoggedInUserInfo(targetGen);
   }, []);
+
+  // 🌟 1. 設定期の役員(最初に見つかった主将など)を自分として自動セット
+  const fetchLoggedInUserInfo = async (gen: number) => {
+    try {
+      const { data, error } = await supabase
+        .from("officers")
+        .select("*")
+        .eq("generation", gen);
+      
+      if (error) throw error;
+      if (data && data.length > 0) {
+        // 主将、キャプテンなどの主要な役職があればそれを初期値に（なければ1件目）
+        const primaryOfficer = data.find(o => o.role.includes("主将") || o.role.includes("キャプテン")) || data[0];
+        setUserRole(primaryOfficer.role || "キャプテン");
+        setUserName(primaryOfficer.name || "");
+      }
+    } catch (err: any) {
+      console.error("ログインユーザー情報取得失敗:", err.message);
+    }
+  };
 
   // 📞 contactsテーブルから役職（role）の一覧をユニークに取得
   const fetchRolesFromContacts = async () => {
@@ -80,7 +104,6 @@ export default function MailPage() {
       const { data, error } = await supabase.from("contacts").select("role");
       if (error) throw error;
       if (data) {
-        // 重複を除外してクリーンな配列にする
         const uniqueRoles = Array.from(new Set(data.map(d => d.role).filter(Boolean))) as string[];
         setRoles(uniqueRoles);
         if (uniqueRoles.length > 0) setSelectedRole(uniqueRoles[0]);
@@ -89,6 +112,55 @@ export default function MailPage() {
       console.error("役職リスト取得失敗:", err.message);
     }
   };
+
+  // 🌟 2. 宛先の役職（selectedRole）が選ばれたら、contactsテーブルから自動で情報を引き抜く
+  useEffect(() => {
+    if (!selectedRole) return;
+
+    const fetchContactDetails = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("contacts")
+          .select("*")
+          .eq("role", selectedRole);
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          const target = data[0]; // 同一役職の1件目を割り当て
+          
+          // ジャンルや役職名に応じて柔軟にセット
+          if (selectedRole.includes("顧問")) {
+            setAdvisorName(target.name || "");
+            setAdvisorAffiliation(target.affiliation || "");
+            setAdvisorPhone(target.phone_number || "");
+          } else if (selectedRole.includes("監督")) {
+            setDirectorName(target.name || "");
+          } else {
+            // それ以外の一般的な役職の場合は、汎用として顧問欄などに流し込んでおく
+            setAdvisorName(target.name || "");
+            setAdvisorAffiliation(target.affiliation || "外部関係者");
+            setAdvisorPhone(target.phone_number || "");
+          }
+        }
+      } catch (err: any) {
+        console.error("宛先情報引き抜き失敗:", err.message);
+      }
+    };
+
+    fetchContactDetails();
+  }, [selectedRole]);
+
+  // 🌟 追加機能: 監督情報がcontactsにあればついでに自動で裏から持ってきてあげる
+  useEffect(() => {
+    const autoFetchDirector = async () => {
+      const { data } = await supabase.from("contacts").select("name").like("role", "%監督%").limit(1);
+      if (data && data.length > 0) {
+        setDirectorName(data[0].name || "");
+      }
+    };
+    autoFetchDirector();
+  }, []);
 
   // 💾 emailsテーブルから下書き一覧を取得
   const fetchDrafts = async () => {
@@ -140,10 +212,10 @@ export default function MailPage() {
     }
   };
 
-  // 💾 下書き保存 (emailsテーブルへのINSERT / UPDATE)
+  // 💾 下書き保存
   const saveDraft = async () => {
     if (!mailTitle.trim() || !mailBody.trim()) {
-      showToast("error", "件名と本文が空の時は下書き保存できません。先にテンプレートを生成するか入力してください。");
+      showToast("error", "件名と本文が空の時は下書き保存できません。");
       return;
     }
     setIsLoading(true);
@@ -158,7 +230,6 @@ export default function MailPage() {
 
     try {
       if (currentDraftId) {
-        // 更新 (UPDATE)
         const { error } = await supabase
           .from("emails")
           .update(draftData)
@@ -166,7 +237,6 @@ export default function MailPage() {
         if (error) throw error;
         showToast("success", "下書きを上書き更新しました！");
       } else {
-        // 新規追加 (INSERT)
         const { data, error } = await supabase
           .from("emails")
           .insert([draftData])
@@ -185,7 +255,7 @@ export default function MailPage() {
     }
   };
 
-  // 📝 保存された下書きをフォームとテキストエリアに呼び出す
+  // 📝 下書きを読み込む
   const loadDraft = (draft: DraftEmail) => {
     setMailTitle(draft.title);
     setMailBody(draft.body);
@@ -217,15 +287,12 @@ export default function MailPage() {
     }
   };
 
-  // 🚀 送信済み処理 (Google Drive保存想定のモック)
   const handleSendMail = () => {
     if (!mailTitle || !mailBody) {
       showToast("error", "送信する内容がありません。");
       return;
     }
-    alert("🚀 送信済みとして記録します！\n\n（※今後ここにGoogle Drive APIを接続し、過去問・引き継ぎタブと同様に自動で書類やログとしてDrive側へ保存する処理を組み込みます）");
-    
-    // フォームクリア
+    alert("🚀 送信済みとして記録します！\n\n（※今後ここにGoogle Drive APIを接続し、自動で書類やログとして保存する処理を組み込みます）");
     setMailTitle("");
     setMailBody("");
     setCurrentDraftId(null);
@@ -234,7 +301,6 @@ export default function MailPage() {
   return (
     <div className="p-4 max-w-md mx-auto md:max-w-7xl bg-slate-950 min-h-screen text-slate-100 pt-20">
       
-      {/* 通知トースト */}
       {message && (
         <div className={`fixed top-24 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-bold shadow-2xl ${
           message.type === "success" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-red-500/20 text-red-400 border-red-500/30"
@@ -244,7 +310,6 @@ export default function MailPage() {
         </div>
       )}
 
-      {/* ヘッダー */}
       <div className="flex items-center gap-2 mb-6 border-b border-slate-800 pb-3">
         <Mail className="w-6 h-6 text-purple-400" />
         <div>
@@ -255,12 +320,8 @@ export default function MailPage() {
         </div>
       </div>
 
-      {/* メイングリッド (左2/3: 作成・編集, 右1/3: 過去メール検索) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* =======================================================
-            左側：メール作成＆下書き編集エリア (2カラム占有)
-           ======================================================= */}
         <div className="lg:col-span-2 space-y-6">
           
           {/* STEP 1: 変数入力フォーム */}
@@ -269,7 +330,6 @@ export default function MailPage() {
               <FileText className="w-3.5 h-3.5 text-purple-400" /> 1. テンプレート変数入力
             </h2>
             
-            {/* メイン選択（ジャンル・宛先役職） */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 mb-1">メールジャンル</label>
@@ -279,8 +339,8 @@ export default function MailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 mb-1">宛先 (連絡先マスターの役職から取得)</label>
-                <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                <label className="block text-[11px] font-bold text-slate-400 mb-1">宛先 (自動でマスターからデータが引き抜かれます)</label>
+                <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-purple-400 font-bold border-purple-500/30 focus:outline-none focus:border-purple-500">
                   {roles.length === 0 ? (
                     <option value="">設定タブで外部連絡先を登録してください</option>
                   ) : (
@@ -293,11 +353,11 @@ export default function MailPage() {
             {/* あなたの情報 */}
             <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-bold text-purple-400 mb-1">あなたの役職</label>
+                <label className="block text-[10px] font-bold text-purple-400 mb-1">あなたの役職（自動反映）</label>
                 <input type="text" value={userRole} onChange={(e) => setUserRole(e.target.value)} placeholder="例: キャプテン" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs" />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-purple-400 mb-1">あなたの名前</label>
+                <label className="block text-[10px] font-bold text-purple-400 mb-1">あなたの名前（自動反映）</label>
                 <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} placeholder="例: 山田太郎" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs" />
               </div>
             </div>
@@ -337,23 +397,23 @@ export default function MailPage() {
               </div>
             </div>
 
-            {/* 顧問・監督の情報 */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+            {/* 顧問・監督の情報 (自動入力) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t border-slate-800/50">
               <div>
-                <label className="block text-[11px] text-slate-400 mb-1">顧問の名前</label>
-                <input type="text" value={advisorName} onChange={(e) => setAdvisorName(e.target.value)} placeholder="鈴木" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs" />
+                <label className="block text-[11px] text-indigo-400 font-bold mb-1">宛先の氏名</label>
+                <input type="text" value={advisorName} onChange={(e) => setAdvisorName(e.target.value)} placeholder="自動抽出されます" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200" />
               </div>
               <div>
-                <label className="block text-[11px] text-slate-400 mb-1">顧問の所属</label>
-                <input type="text" value={advisorAffiliation} onChange={(e) => setAdvisorAffiliation(e.target.value)} placeholder="〇〇研究科" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs" />
+                <label className="block text-[11px] text-indigo-400 font-bold mb-1">宛先の所属</label>
+                <input type="text" value={advisorAffiliation} onChange={(e) => setAdvisorAffiliation(e.target.value)} placeholder="自動抽出されます" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200" />
               </div>
               <div>
-                <label className="block text-[11px] text-slate-400 mb-1">顧問の電話番号</label>
-                <input type="text" value={advisorPhone} onChange={(e) => setAdvisorPhone(e.target.value)} placeholder="022-XXX-XXXX" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs" />
+                <label className="block text-[11px] text-indigo-400 font-bold mb-1">宛先の電話番号</label>
+                <input type="text" value={advisorPhone} onChange={(e) => setAdvisorPhone(e.target.value)} placeholder="自動抽出されます" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200" />
               </div>
               <div>
-                <label className="block text-[11px] text-slate-400 mb-1">監督の名前</label>
-                <input type="text" value={directorName} onChange={(e) => setDirectorName(e.target.value)} placeholder="佐藤" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs" />
+                <label className="block text-[11px] text-indigo-400 font-bold mb-1">監督の氏名</label>
+                <input type="text" value={directorName} onChange={(e) => setDirectorName(e.target.value)} placeholder="自動抽出されます" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200" />
               </div>
             </div>
 
@@ -401,7 +461,7 @@ export default function MailPage() {
               </div>
             </div>
 
-            {/* 下書き一覧エリア */}
+            {/* 下書き一覧 */}
             <div className="mt-6 pt-4 border-t border-slate-800/60 space-y-2">
               <h3 className="text-[11px] font-bold text-slate-400">📁 保存中の下書き一覧 ({drafts.length}件)</h3>
               {drafts.length === 0 ? (
@@ -428,16 +488,13 @@ export default function MailPage() {
 
         </div>
 
-        {/* =======================================================
-            右側：過去メールの検索・表示エリア (1カラム)
-           ======================================================= */}
+        {/* 過去メールの検索 */}
         <div className="space-y-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl space-y-4">
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-800">
               <Search className="w-3.5 h-3.5 text-purple-400" /> 🔍 過去メールの検索
             </h2>
             
-            {/* 検索フィルターUI */}
             <div className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1">期で検索</label>
@@ -459,7 +516,6 @@ export default function MailPage() {
               </div>
             </div>
 
-            {/* 一覧（プレースホルダー） */}
             <div className="mt-4 pt-4 border-t border-slate-800/60">
               <h3 className="text-[11px] font-bold text-slate-400 mb-2">該当する過去メール一覧</h3>
               
