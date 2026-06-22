@@ -69,6 +69,24 @@ export default function CalendarPage(){
     const blankDaysCount = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
     const blankDays = Array.from({ length: blankDaysCount });
 
+    const [userMetadata, setUserMetadata] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // user_metadata の中身を丸ごとステートに入れる
+        setUserMetadata(user.user_metadata);
+      }
+      setLoading(false);
+    };
+    fetchUser();
+  }, []);
+
+
+
+
+
     const fetchEvents = async () => {
         setLoading(true);
         const startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
@@ -566,6 +584,37 @@ export default function CalendarPage(){
                 </form>
             </div>
         )}
+        <div className="mb-6 p-4 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs space-y-2">
+        <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span className="font-bold text-slate-300">📡 現在のログイン信号（デバッグ用）</span>
+        </div>
+        
+        {loading ? (
+          <p className="text-slate-500">信号を読み込み中...</p>
+        ) : userMetadata ? (
+          <div className="grid grid-cols-2 gap-2 text-slate-400">
+            <div>🔑 <span className="font-bold text-slate-200">role (これを見ます):</span></div>
+            <div className={`font-bold ${userMetadata.role === 'officer' ? 'text-purple-400' : 'text-emerald-400'}`}>
+              "{userMetadata.role || "未定義"}"
+            </div>
+
+            <div>👤 <span className="font-bold text-slate-200">名前 (name):</span></div>
+            <div>"{userMetadata.name || "未定義"}"</div>
+
+            <div>🎖️ <span className="font-bold text-slate-200">役職 (title):</span></div>
+            <div>"{userMetadata.title || "無し"}"</div>
+
+            <div>📅 <span className="font-bold text-slate-200">期 (generation):</span></div>
+            <div>"{userMetadata.generation || "無し"}"</div>
+          </div>
+        ) : (
+          <p className="text-rose-400 font-bold">❌ ログインセッションがありません（未ログイン）</p>
+        )}
+      </div>
     </div>
+    
+        
+
   );
 }
