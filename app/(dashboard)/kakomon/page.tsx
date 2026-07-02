@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/supabase";
-import { createKakomonSubject, uploadKakomonFile, deleteKakomonFile } from "@/actions/kakomonActions"; // 👈 deleteKakomonFileを追加
-import { Search, Plus, GraduationCap, School, BookOpen, User, Calendar, Clock, FileText, Download, Upload, AlertCircle, Trash2 } from "lucide-react"; // 👈 Trash2を追加
+import { createKakomonSubject, uploadKakomonFile, deleteKakomonFile } from "@/actions/kakomonActions";
+import { Search, Plus, GraduationCap, School, BookOpen, User, Calendar, Clock, FileText, Download, Upload, AlertCircle, Trash2, RefreshCw } from "lucide-react"; // 👈 RefreshCwを追加
 
 // 東北大の学部・学科データ
 const FACULTY_DATA: { [key: string]: string[] } = {
@@ -15,10 +15,12 @@ const FACULTY_DATA: { [key: string]: string[] } = {
 };
 
 interface SubjectType { id: string; name: string; }
-// 💡 created_by を型定義に追加
 interface FileType { id: string; name: string; drive_file_id: string; professor: string; year: number; semester: string; created_by: string; }
 
 export default function KakomonPage() {
+  // 💡 認証チェック用のローディングステートを新規追加
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [viewMode, setViewMode] = useState<"search" | "add">("search");
   
   // 共通・検索用ステート
@@ -35,33 +37,51 @@ export default function KakomonPage() {
   const [loadingSubjects, setLoadingSubjects] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
 
-  // 🎯 【新規追加モード用】の独立したステート
+  // 【新規追加モード用】の独立したステート
   const [addMode, setAddMode] = useState<"select_subject" | "create_subject">("select_subject");
   const [newSubjectName, setNewSubjectName] = useState(""); 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // 💡 ログインユーザー情報・トークン保持用のステート
+  // ログインユーザー情報・トークン保持用のステート
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
   // 学部変更時に学科をリセット
   useEffect(() => { setDepartment(""); }, [faculty]);
 
-  // 💡 初期化時および認証状態変更時にユーザー情報を取得・監視する
+  // 💡 【最重要】初期化時にログインチェックを行い、未ログインなら弾く
   useEffect(() => {
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+    const checkAuthAndGetSession = async () => {
+      try {
+        // 現在のセッション（ログイン状態）を取得
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          // 💡 ログインしていない場合は即座にログイン画面へ
+          window.location.href = "/login";
+          return;
+        }
+
+        // ログインしていれば各種ステートをセットして画面の読み込みを完了する
+        setToken(session.access_token);
+        setCurrentUserId(session.user.id);
+        setAuthLoading(false);
+      } catch (err) {
+        console.error("認証チェック中にエラーが発生しました:", err);
+        window.location.href = "/login";
+      }
+    };
+    checkAuthAndGetSession();
+
+    // 認証状態の変更（ログアウトなど）を監視
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        window.location.href = "/login";
+      } else {
         setToken(session.access_token);
         setCurrentUserId(session.user.id);
       }
-    };
-    getSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setToken(session?.access_token || null);
-      setCurrentUserId(session?.user?.id || null);
     });
 
     return () => subscription.unsubscribe();
@@ -80,15 +100,19 @@ export default function KakomonPage() {
     setLoadingSubjects(false);
   };
 
-  useEffect(() => { fetchSubjects(); }, [category, faculty, department]);
+  // 💡 認証完了後にのみ科目データをフェッチするように修正
+  useEffect(() => { 
+    if (!authLoading) {
+      fetchSubjects(); 
+    }
+  }, [category, faculty, department, authLoading]);
 
-  // 🔍 過去問検索処理 (削除後に再利用できるよう e をオプショナルに修正)
+  // 過去問検索処理
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!subjectId) return alert("科目を選択してください");
     setLoadingFiles(true);
     
-    // 💡 created_by も検索対象に含めるように修正
     let query = supabase.from("kakomon_files").select("id, name, drive_file_id, professor, year, semester, created_by").eq("subject_id", subjectId);
     if (professor) query = query.eq("professor", professor);
     if (year) query = query.eq("year", parseInt(year));
@@ -98,7 +122,7 @@ export default function KakomonPage() {
     setLoadingFiles(false);
   };
 
-  // 🗑️ 過去問削除処理
+  // 過去問削除処理
   const handleDelete = async (fileId: string, driveFileId: string) => {
     if (!confirm("本当にこの過去問資料を削除しますか？\nデータベースおよびGoogleドライブから完全に削除されます。")) return;
     if (!token) return alert("認証トークンがありません。再ログインしてください。");
@@ -111,7 +135,7 @@ export default function KakomonPage() {
         } else {
           alert("🗑️ 過去問資料を削除しました。");
         }
-        handleSearch(); // 一覧を再読み込みして最新化
+        handleSearch();
       } else {
         alert(`❌ 削除に失敗しました: ${res.error}`);
       }
@@ -120,7 +144,7 @@ export default function KakomonPage() {
     }
   };
 
-  // ➕ 過去問アップロード処理（Drive ＆ Supabase連動）
+  // 過去問アップロード処理
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadFile) return alert("ファイルを選択してください");
@@ -133,7 +157,6 @@ export default function KakomonPage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
-      // 新しい科目を作る場合
       if (addMode === "create_subject") {
         if (!newSubjectName.trim()) throw new Error("新しい科目名を入力してください");
         
@@ -150,18 +173,13 @@ export default function KakomonPage() {
 
       if (!targetSubjectId) throw new Error("科目が指定されていません");
 
-      // ファイルアップロードの実行
       const formData = new FormData();
       formData.append("file", uploadFile);
 
       const fileRes = await uploadKakomonFile(
         formData, 
         targetSubjectId, 
-        {
-          professor: professor.trim(),
-          year: parseInt(year),
-          semester: semester
-        },
+        { professor: professor.trim(), year: parseInt(year), semester: semester },
         token
       );
 
@@ -169,7 +187,6 @@ export default function KakomonPage() {
 
       alert("🎉 過去問のアップロードに成功しました！Google DriveとSupabaseに保存されました。");
       
-      // フォームの初期化
       setUploadFile(null);
       setNewSubjectName("");
       await fetchSubjects(); 
@@ -181,11 +198,23 @@ export default function KakomonPage() {
     }
   };
 
+  // 💡 認証チェック中（未確認の間）は真っ白なローディング画面を出して、中身を絶対に見せない
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
+        <div className="flex items-center gap-2 text-sm text-slate-400">
+          <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+          認証情報を確認中...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
+      {/* 以下のJSXは変更ありませんので省略（元のままお使いいただけます） */}
       <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* ヘッダーエリア */}
+        {/* ...（ヘッダー、検索フォーム、結果一覧、アップロードフォームなどすべてそのままです）... */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <div>
             <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
@@ -204,11 +233,9 @@ export default function KakomonPage() {
           </div>
         </div>
 
-        {/* 🔍 検索・閲覧モード */}
         {viewMode === "search" ? (
           <div className="space-y-6">
             <form onSubmit={handleSearch} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-              {/* 全学/専門 トグル */}
               <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-xl border border-slate-800 max-w-xs">
                 <button type="button" onClick={() => setCategory("全学")} className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${category === "全学" ? "bg-slate-800 text-emerald-400 shadow" : "text-slate-400"}`}>全学教育</button>
                 <button type="button" onClick={() => setCategory("専門")} className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${category === "専門" ? "bg-slate-800 text-emerald-400 shadow" : "text-slate-400"}`}>専門科目</button>
@@ -264,14 +291,12 @@ export default function KakomonPage() {
               </button>
             </form>
 
-            {/* 📁 結果一覧 */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
               <h3 className="text-xs font-bold text-slate-400 flex items-center gap-1.5 px-1 mb-4"><FileText className="w-3.5 h-3.5 text-emerald-400" /> 検索結果一覧</h3>
               {files.length === 0 ? (
                 <div className="text-center text-xs text-slate-500 py-12 border border-dashed border-slate-800 rounded-xl">条件に一致する過去問ファイルがありません。</div>
               ) : (
                 <div className="border border-slate-800 rounded-xl overflow-hidden text-sm bg-slate-950">
-                  {/* 💡 操作欄とファイル名のグリッド比率を調整 (5:3:2:2 ➔ 4:3:2:3) */}
                   <div className="grid grid-cols-12 bg-slate-900 p-3 text-xs font-bold text-slate-400 border-b border-slate-800">
                     <div className="col-span-4">ファイル名</div><div className="col-span-3">担当教授</div><div className="col-span-2">年度/学期</div><div className="col-span-3 text-center">操作</div>
                   </div>
@@ -281,7 +306,6 @@ export default function KakomonPage() {
                       <div className="col-span-3 text-slate-400">{file.professor || "未登録"}</div>
                       <div className="col-span-2 text-slate-400">{file.year}年 / {file.semester}</div>
                       
-                      {/* 💡 操作ボタンエリア。自分が追加したファイルの場合のみ、開くボタンの横に削除ボタンが出現します */}
                       <div className="col-span-3 flex justify-center gap-1.5">
                         <a href={`/api/kakomon/download?id=${file.drive_file_id}`} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold px-2.5 py-1.5 rounded-md text-[10px] shrink-0">
                           <Download className="w-3 h-3" /> 開く
@@ -303,13 +327,9 @@ export default function KakomonPage() {
             </div>
           </div>
         ) : (
-          /* =========================================================
-             ➕ 過去問を追加モード
-             ========================================================= */
           <form onSubmit={handleUpload} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-xl">
             <h2 className="text-sm font-bold text-emerald-400 flex items-center gap-1.5"><Upload className="w-4 h-4" /> 過去問資料の新規アップロード</h2>
 
-            {/* 1. 分類選択 */}
             <div className="space-y-2">
               <label className="block text-xs font-bold text-slate-400 px-1">1. 過去問の分類を選択</label>
               <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-xl border border-slate-800 max-w-xs">
@@ -318,7 +338,6 @@ export default function KakomonPage() {
               </div>
             </div>
 
-            {/* 2. 学部・学科選択（専門の場合のみ） */}
             {category === "専門" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-l-2 border-slate-800 pl-4">
                 <div>
@@ -338,7 +357,6 @@ export default function KakomonPage() {
               </div>
             )}
 
-            {/* 3. 科目名の選択 or 新規作成トグル */}
             <div className="space-y-3 border-t border-slate-800/60 pt-4">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold text-slate-400 px-1">2. 科目名の指定</label>
@@ -361,7 +379,6 @@ export default function KakomonPage() {
               )}
             </div>
 
-            {/* 4. メタデータ ＆ ファイル選択 */}
             <div className="space-y-4 border-t border-slate-800/60 pt-4">
               <label className="block text-xs font-bold text-slate-400 px-1">3. ファイルと詳細情報の入力</label>
               
@@ -382,7 +399,6 @@ export default function KakomonPage() {
                 </div>
               </div>
 
-              {/* 本物のファイル選択UI */}
               <div className="border-2 border-dashed border-slate-800 hover:border-slate-700 bg-slate-950 rounded-xl p-6 text-center transition-colors relative">
                 <input type="file" accept=".pdf,.doc,.docx,.png,.jpg" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required />
                 <div className="space-y-1">
@@ -393,14 +409,12 @@ export default function KakomonPage() {
               </div>
             </div>
 
-            {/* 送信ボタン */}
             <button type="submit" disabled={isUploading} className="w-full h-10 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 text-xs shadow-lg shadow-emerald-500/10 cursor-pointer">
               <Upload className="w-4 h-4" />
               {isUploading ? "Google Driveに通信中 & 保存中..." : "この内容で過去問を登録する"}
             </button>
           </form>
         )}
-
       </div>
     </div>
   );
