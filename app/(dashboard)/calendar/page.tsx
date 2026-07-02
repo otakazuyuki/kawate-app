@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
-import { Plus, X, Trash2 } from "lucide-react";
+import { Plus, X, Trash2, RefreshCw } from "lucide-react"; // 💡 認証中用の読み込みアイコンを追加
 import { supabase } from "@/supabase";
 
 const d = new Date();
@@ -26,12 +26,14 @@ interface DaySetting {
 }
 
 export default function CalendarPage() {
-    // 💡 変更点1: 初期表示を現在の年・月に動的変更
+    // 💡 認証チェック用のローディングステートを新規追加
+    const [authLoading, setAuthLoading] = useState(true);
+
     const [currentYear, setCurrentYear] = useState(d.getFullYear());
     const [currentMonth, setCurrentMonth] = useState(d.getMonth() + 1);
     const [selectedDay, setSelectedDay] = useState<number | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [modalMode, setModalMode] = useState<"add" | "edit" | "soshikiren-setting" | "soshikiren-setting">("add");
+    const [modalMode, setModalMode] = useState<"add" | "edit" | "soshikiren-setting">("add");
 
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(false);
@@ -48,7 +50,6 @@ export default function CalendarPage() {
 
     const [bulkType, setBulkType] = useState<"組織練" | "コート予約">("組織練");
     const [bulkStartDate, setBulkStartDate] = useState(TODAY_STR);
-    // 💡 変更点2: 一括設定の終了日も現在の月に合わせて動的に（例: 今月末）
     const [bulkEndDate, setBulkEndDate] = useState(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()).padStart(2, '0')}`);
 
     const [dbRoles, setDbRoles] = useState<string[]>([]);
@@ -72,15 +73,35 @@ export default function CalendarPage() {
 
     const [userMetadata, setUserMetadata] = useState<any>(null);
 
+    // 💡 認証チェックとユーザー情報取得を一元管理（middlewareなしで直帰させるガード）
     useEffect(() => {
-        const fetchUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                setUserMetadata(user.user_metadata);
+        const checkAuthAndFetchUser = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    window.location.href = "/login";
+                    return;
+                }
+                
+                if (session.user) {
+                    setUserMetadata(session.user.user_metadata);
+                }
+                setAuthLoading(false);
+            } catch (err) {
+                console.error("認証チェック中にエラーが発生しました:", err);
+                window.location.href = "/login";
             }
-            setLoading(false);
         };
-        fetchUser();
+        checkAuthAndFetchUser();
+
+        // リアルタイムの認証状態変更を監視（ログアウトされたら即弾く）
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!session) {
+                window.location.href = "/login";
+            }
+        });
+
+        return () => subscription.unsubscribe();
     }, []);
 
     const isOfficer = userMetadata?.role === 'officer';
@@ -107,9 +128,9 @@ export default function CalendarPage() {
 
     useEffect(() => {
         const fetchCurrentGenerationRoles = async () => {
+            if (authLoading || !userMetadata) return; // 💡 認証完了前は処理を行わない
             try {
-                const { data: { user } } = await supabase.auth.getUser();
-                const userGen = user?.user_metadata?.generation;
+                const userGen = userMetadata?.generation;
                 if (!userGen) {
                     console.warn("ログインユーザーの『期（generation）』が取得できませんでした。");
                     return;
@@ -137,11 +158,13 @@ export default function CalendarPage() {
         };
 
         fetchCurrentGenerationRoles();
-    }, []);
+    }, [authLoading, userMetadata]);
 
     useEffect(() => {
-        fetchEvents();
-    }, [currentYear, currentMonth]);
+        if (!authLoading) {
+            fetchEvents();
+        }
+    }, [currentYear, currentMonth, authLoading]);
 
     const resetForm = () => {
         setEventId(null);
@@ -286,6 +309,18 @@ export default function CalendarPage() {
         }
     };
 
+    // 💡 認証情報を確認している間は画面を真っ白（ローディング）にし、未ログイン者にカレンダーを1ミリも見せない
+    if (authLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                    <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+                    認証情報を確認中...
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="p-4 max-w-md mx-auto md:max-w-4xl bg-slate-950 min-h-screen text-slate-100">
             <div className="flex items-center justify-between mb-4">
@@ -323,23 +358,18 @@ export default function CalendarPage() {
                         const formattedDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                         const dayEvents = events.filter(e => e.date === formattedDate);
                         const isSelected = selectedDay === day;
-                        
-                        // 💡 変更点3: 「今日」かどうかの判定を追加
                         const isToday = formattedDate === TODAY_STR;
 
                         return (
                             <button 
                                 key={day} 
-                                // 💡 変更点4: 「今日」のセルの背景と枠線をほんのりエメラルド（またはお好みの色）に強調
                                 className={`min-h-[90px] p-1 flex flex-col justify-between items-start hover:bg-slate-800/50 transition-colors text-left group ${isSelected ? "bg-slate-800" : isToday ? "bg-emerald-500/5 ring-1 ring-inset ring-emerald-500/30" : ""}`} 
                                 onClick={() => setSelectedDay(day)}
                             >
                                 <div className="flex items-center justify-between w-full">
-                                    {/* 💡 変更点5: 日付のバッジ。選択時は緑ベタ、今日の時は緑の薄い背景にして目立たせる */}
                                     <span className={`text-xs font-medium px-1.5 py-0.5 rounded-md ${isSelected ? "bg-emerald-500 text-white font-bold" : isToday ? "bg-emerald-500/20 text-emerald-400 font-bold" : "text-slate-400"}`}>
                                         {day}
                                     </span>
-                                    {/* 今日のときだけ右上に極小の「今日」ラベルを乗せても可愛い */}
                                     {isToday && <span className="text-[9px] text-emerald-400 font-bold px-1 hidden md:inline">今日</span>}
                                 </div>
 
@@ -514,7 +544,6 @@ export default function CalendarPage() {
                                                 disabled={isReadOnly}
                                                 onChange={() => setTargetRole(["officers", ...dbRoles])}
                                                 className="accent-emerald-500 w-4 h-4"
-
                                             />
                                             役員全員に表示
                                         </label>
