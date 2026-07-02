@@ -66,6 +66,9 @@ export default function HikitugiPage() {
   const [subGenres, setSubGenres] = useState<SubGenre[]>([]);
   const [searchResults, setSearchResults] = useState<HikitugiFile[]>([]);
   const [searching, setSearching] = useState(false);
+  
+  // 💡 変更点1: DBから取得した役職リストを格納するStateを追加
+  const [dbRoles, setDbRoles] = useState<string[]>([]);
 
   // --- 検索フォームの状態 ---
   const [searchKi, setSearchKi] = useState<string>("");
@@ -118,7 +121,7 @@ export default function HikitugiPage() {
   }, []);
 
   // ==========================================
-  // 2. ジャンル構造の読み込み
+  // 2. ジャンル構造および役職リストの読み込み
   // ==========================================
   const loadGenres = async (ki: number) => {
     const mainRes = await getMainGenres(ki);
@@ -127,9 +130,35 @@ export default function HikitugiPage() {
     if (subRes.success && subRes.data) setSubGenres(subRes.data);
   };
 
+  // 💡 変更点2: ログインユーザーの「期」に合わせた役職リストを取得する関数を追加
+  const fetchCurrentGenerationRoles = async (ki: number) => {
+    try {
+      const { data, error } = await supabase
+        .from("officers")
+        .select("role")
+        .eq("generation", ki);
+
+      if (error) {
+        console.error("役職リストの取得に失敗しました:", error);
+        return;
+      }
+
+      if (data) {
+        const uniqueRoles = Array.from(
+          new Set(data.map((d) => d.role).filter(Boolean))
+        );
+        setDbRoles(uniqueRoles);
+      }
+    } catch (err) {
+      console.error("予期せぬエラーが発生しました:", err);
+    }
+  };
+
   useEffect(() => {
     if (userMeta?.ki) {
       loadGenres(userMeta.ki);
+      // 💡 変更点3: 期が特定できたら役職データも合わせて取得
+      fetchCurrentGenerationRoles(userMeta.ki);
     }
   }, [userMeta?.ki, activeTab]);
 
@@ -297,17 +326,18 @@ export default function HikitugiPage() {
                 </div>
                 <div>
                   <label className="block text-slate-400 mb-1 font-bold">担当役職</label>
+                  {/* 💡 変更点4: 手書きの option タグを排除し、dbRoles からマップするように変更 */}
                   <select 
                     value={searchRole}
                     onChange={(e) => setSearchRole(e.target.value)}
                     className="w-full h-9 bg-slate-950 border border-slate-800 rounded-lg px-2 text-slate-200 focus:outline-none focus:border-emerald-500"
                   >
                     <option value="">全て選択</option>
-                    <option value="キャプテン">キャプテン</option>
-                    <option value="副キャプテン">副キャプテン</option>
-                    <option value="会計">会計</option>
-                    <option value="広報">広報</option>
-                    <option value="主務">主務</option>
+                    {dbRoles.map((roleName) => (
+                      <option key={roleName} value={roleName}>
+                        {roleName}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
