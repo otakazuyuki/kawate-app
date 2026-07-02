@@ -3,10 +3,24 @@
 import { createClient } from '@supabase/supabase-js';
 import { getDriveClient } from '@/lib/googleDrive';
 import { Readable } from 'stream';
+import {google} from 'googleapis';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+function getGoogleDriveClient(){
+    const oauth2Client=new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI
+    );
+    oauth2Client.setCredentials({
+        refresh_token:process.env.GOOGLE_REFRESH_TOKEN
+    });
+    return google.drive({version:'v3',auth:oauth2Client}
+    )
+}
 
 /**
  * 1. 指定した期のメインジャンル一覧を取得
@@ -324,5 +338,54 @@ export async function searchHikitugiFiles(filters: {
   } catch (error) {
     console.error('searchHikitugiFiles Error:', error);
     return { success: false, error: '資料の検索に失敗しました' };
+  }
+}
+
+// 💡 削除用のアクション
+export async function deleteHikitugiFile(fileId: string, googleDriveFileId: string, userToken: string) {
+  try {
+    // ユーザーのトークンを使ってSupabaseクライアントを初期化（RLSを効かせるため）
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: { headers: { Authorization: `Bearer ${userToken}` } },
+      }
+    );
+
+    // 1. まずSupabaseからデータを削除してみる（RLSにより、他人のデータならここで失敗するか0件削除になる）
+    const { data, error, count } = await supabase
+      .from("hikitugi_files")
+      .delete()
+      .eq("id", fileId)
+      .select(); // 削除できたデータを取得
+
+    if (error) {
+      return { success: false, error: `データベースの削除に失敗しました: ${error.message}` };
+    }
+
+    // 2. RLSによって削除が拒絶された（自分が作ったファイルではない）場合、selectの結果が空になる
+    if (!data || data.length === 0) {
+      return { success: false, error: "このファイルを削除する権限がありません。（自分が投稿したファイルのみ削除できます）" };
+    }
+
+    // 3. Supabaseの削除が成功した場合のみ、Googleドライブのファイルも削除する
+    try{
+        const drive=getGoogleDriveClient();
+        await drive.files.delete({
+            fileId:googleDriveFileId,
+        });
+    }catch(driveError:any){
+        console.error("Googleドライブのファイル削除に失敗しました:",driveError);
+        return{
+            success:true,
+            warning:"データベースからは削除されましたが、Googleドライブの削除に失敗しました。管理者に連絡してください。"
+        }
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error(err);
+    return { success: false, error: "予期せぬエラーが発生しました。" };
   }
 }
