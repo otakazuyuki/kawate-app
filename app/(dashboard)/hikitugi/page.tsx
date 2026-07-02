@@ -10,7 +10,8 @@ import {
   deleteMainGenre, 
   deleteSubGenre,
   uploadHikitugiFile,
-  searchHikitugiFiles
+  searchHikitugiFiles,
+  deleteHikitugiFile
 } from "@/actions/hikitugiActions";
 import { 
   Folder, 
@@ -89,6 +90,8 @@ export default function HikitugiPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   // ==========================================
   // 1. 初期化: ログイン情報・セッショントークンの取得
   // ==========================================
@@ -98,6 +101,7 @@ export default function HikitugiPage() {
         const { data: { session } } = await supabase.auth.getSession();
         if (session && session.user) {
           setToken(session.access_token);
+          setCurrentUserId(session.user.id);
           const meta = session.user.user_metadata;
           const currentKi = meta.generation ? Number(meta.generation) : 68;
           
@@ -463,16 +467,38 @@ export default function HikitugiPage() {
                         </div>
                       </div>
                       
-                      <div className="flex md:flex-col items-end justify-between md:justify-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-850">
-                        <a 
-                          href={`/api/hikitugi/download?id=${file.google_drive_file_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="h-9 px-4 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold rounded-lg border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs w-full md:w-auto shadow-md"
-                        >
-                          <Download className="w-3.5 h-3.5" /> 開く / DL
-                        </a>
-                      </div>
+                      {/* 開く/DL ボタンの横か下に配置 */}
+<div className="flex md:flex-col items-end justify-between md:justify-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-850">
+  <a 
+    href={`/api/hikitugi/download?id=${file.google_drive_file_id}`}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="h-9 px-4 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold rounded-lg border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs w-full md:w-auto shadow-md"
+  >
+    <Download className="w-3.5 h-3.5" /> 開く / DL
+  </a>
+
+  {/* 💡 自分が追加したファイル（created_byが一致）の時だけ、削除ボタンを表示する */}
+  {(file as any).created_by === currentUserId && (
+    <button
+      onClick={async () => {
+        if (!confirm("本当にこの引き継ぎ資料を削除しますか？データベースおよびGoogleドライブから完全に削除されます。")) return;
+        if (!token) return;
+        
+        const res = await deleteHikitugiFile(file.id, file.google_drive_file_id, token);
+        if (res.success) {
+          alert("🗑️ 資料を削除しました。");
+          handleSearch(); // 検索結果を再読み込みして画面を更新
+        } else {
+          alert(`❌ 削除失敗: ${res.error}`);
+        }
+      }}
+      className="h-9 px-3 bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-900/40 font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs w-full md:w-auto shadow-md"
+    >
+      <Trash2 className="w-3.5 h-3.5" /> 削除する
+    </button>
+  )}
+</div>
                     </div>
                   ))}
                 </div>
