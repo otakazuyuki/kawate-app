@@ -17,7 +17,20 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 1. 名簿チェック（ここは現状のまま維持）
+      // 1. 🔥【最重要変更】まず先に「認証（ログイン）」を実行！
+      // これにより、この後の名簿テーブル（RLSあり）を読み込む権限（AccessToken）が手に入ります。
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
+      });
+
+      if (authError) {
+        alert(`ログイン失敗: ${authError.message}`);
+        setLoading(false);
+        return;
+      }
+
+      // 2. 認証に成功した状態で、名簿チェック＆メタデータ更新
       if (userType === "officer") {
         const { data: officerData, error: dbError } = await supabase
           .from("officers")
@@ -25,26 +38,16 @@ export default function LoginPage() {
           .eq("email", email.trim())
           .maybeSingle();
 
+        // 役員名簿にない、またはエラーの場合
         if (dbError || !officerData) {
           alert("❌ アクセス拒否: 役員名簿にこのメールアドレスの登録がありません。");
+          // 認証だけ通ってしまっているので、即座にログアウトさせてセッションを破棄
+          await supabase.auth.signOut();
           setLoading(false);
           return;
         }
 
-        // 2. 認証を実行
-        const { error: authError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password,
-        });
-
-        if (authError) {
-          alert(`ログイン失敗: ${authError.message}`);
-          setLoading(false);
-          return;
-        }
-
-        // 3. 🎯【最重要：信号の上書き】
-        // 過去の状態が何であれ、今選んだトグル（"officer"）でメタデータを強制上書き
+        // 3. 🎯【信号の上書き】
         await supabase.auth.updateUser({
           data: { 
             role: "officer",
@@ -63,27 +66,16 @@ export default function LoginPage() {
           .eq("email", email.trim())
           .maybeSingle();
 
+        // 部員名簿にない、またはエラーの場合
         if (dbError || !memberData) {
           alert("❌ アクセス拒否: 部員名簿にこのメールアドレスの登録がありません。");
+          // 認証だけ通ってしまっているので、即座にログアウトさせてセッションを破棄
+          await supabase.auth.signOut();
           setLoading(false);
           return;
         }
 
-        // 2. 認証を実行
-        const { error: authError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password,
-        });
-
-        if (authError) {
-          alert(`ログイン失敗: ${authError.message}`);
-          setLoading(false);
-          return;
-        }
-
-        // 3. 🎯【ここが激怒させてしまった原因の修正です】
-        // 役員が部員として入った場合、過去の役員情報（title, generation）が残らないよう、
-        // 明示的に null を送り込んで完全に消去・上書きします。
+        // 3. 🎯【信号の上書き】
         await supabase.auth.updateUser({
           data: { 
             role: "member",          // 👤 問答無用で部員信号にする
@@ -95,9 +87,7 @@ export default function LoginPage() {
         });
       }
 
-      // 4. 🔥【前回のボトルネックを解消する特効薬】
-      // 上書きした最新の信号（role）が含まれた「新しい鍵（セッション）」を即座に再生成し、
-      // ブラウザのクッキーとメモリを最新状態に強制リフレッシュします。これで上書き漏れがゼロになります。
+      // 4. 🔥最新の信号が含まれた「新しい鍵（セッション）」を即座に再生成
       await supabase.auth.refreshSession();
 
       alert(`${userType === "officer" ? "役員" : "一般部員"}としてログインしました！`);
