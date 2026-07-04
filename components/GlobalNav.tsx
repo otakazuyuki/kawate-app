@@ -43,8 +43,8 @@ export default function GlobalNav() {
     });
 
     return (
-        <header className="hidden md:flex fixed top-0 left-0 w-full h-16 bg-slate-900 text-white border-b border-slate-800 items-center justify-between px-6 z-50">
-            {/* 💡 テキストをクリックしたらホーム（/calendar）に戻るように Link で囲みました */}
+        // 💡 hidden md:flex を flex に書き換えました
+        <header className="flex fixed top-0 left-0 w-full h-16 bg-slate-900 text-white border-b border-slate-800 items-center justify-between px-6 z-50">
             <Link 
                 href="/calendar" 
                 className="font-bold text-lg text-emerald-400 hover:opacity-80 transition-opacity cursor-pointer"
@@ -66,7 +66,8 @@ export default function GlobalNav() {
                             }`}
                         >
                             <item.icon className="w-4 h-4" />
-                            {item.label}
+                            {/* 💡 メニューの文字数が多くてスマホで溢れる場合は、スマホだけ文字を非表示（hidden md:inline）にするのもアリです */}
+                            <span className="hidden md:inline">{item.label}</span>
                         </Link>
                     );
                 })}
