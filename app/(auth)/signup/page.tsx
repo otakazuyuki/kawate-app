@@ -3,10 +3,9 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/supabase";
-import { ShieldAlert, Users, KeyRound, Mail, UserPlus } from "lucide-react";
+import { KeyRound, Mail, UserPlus } from "lucide-react";
 
 export default function SignInPage() {
-  const [userType, setUserType] = useState<"officer" | "member">("member"); // デフォルトは一般部員
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -17,7 +16,7 @@ export default function SignInPage() {
     e.preventDefault();
     setLoading(true);
 
-    // 1. パスワードの2回入力チェック
+    // 1. パスワードの2回入力チェック（これはフロント側でやってOK）
     if (password !== confirmPassword) {
       alert("エラー: 入力された2つのパスワードが一致しません。");
       setLoading(false);
@@ -25,46 +24,14 @@ export default function SignInPage() {
     }
 
     try {
-      // 2. 事前登録された名簿（メールアドレス）との照合
-      if (userType === "officer") {
-        // 役員：officers テーブルをチェック
-        const { data, error } = await supabase
-          .from("officers")
-          .select("email")
-          .eq("email", email.trim());
-        
-        if (error || !data || data.length === 0) {
-          alert("❌ 役員名簿にこのメールアドレスが見つかりません。管理者に登録を依頼してください。");
-          setLoading(false);
-          return;
-        }
-      } else {
-        // 一般部員：profiles テーブルをチェック
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("email")
-          .eq("email", email.trim());
-        
-        if (error || !data || data.length === 0) {
-          alert("❌ 部員名簿にこのメールアドレスが見つかりません。設定画面から名簿登録を先に行ってください。");
-          setLoading(false);
-          return;
-        }
-      }
+      // 2. 🔥【超シンプル化】ただSupabaseにアカウント作成を要請するだけ！
+      // 役員か部員かの照合、および名簿にない場合の登録拒否は、すべてSupabase（トリガー）が裏側で自動かつ安全に行います。
+      const { error: authError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password,
+      });
 
-      // 3. 照合を通過したら Supabase Auth でアカウント作成
-      // メタデータ（user_metadata）に役職情報を焼き付ける
-      const { data, error: authError } = await supabase.auth.signUp({
-  email: email.trim(),
-  password: password,
-  options: {
-    // 🔥 ここを追加！
-    data: {
-      requested_role: userType
-    }
-  }
-});
-
+      // 名簿にない場合や、その他のエラー時はSupabaseが弾いてここにメッセージが入ります
       if (authError) {
         alert(`アカウント作成失敗: ${authError.message}`);
         return;
@@ -87,31 +54,7 @@ export default function SignInPage() {
         
         <div className="text-center">
           <h1 className="text-2xl font-bold tracking-tight">川内テニスクラブ</h1>
-          <p className="text-xs text-slate-400 mt-1">新規アカウント作成 (部員照合システム)</p>
-        </div>
-
-        {/* 役員か部員かの切り替えトグルタブ */}
-        <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-xl border border-slate-800">
-          <button
-            type="button"
-            onClick={() => setUserType("member")}
-            className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              userType === "member" ? "bg-slate-800 text-emerald-400 shadow" : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            一般部員として登録
-          </button>
-          <button
-            type="button"
-            onClick={() => setUserType("officer")}
-            className={`flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              userType === "officer" ? "bg-slate-800 text-purple-400 shadow" : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <ShieldAlert className="w-3.5 h-3.5" />
-            役員として登録
-          </button>
+          <p className="text-xs text-slate-400 mt-1">新規アカウント作成</p>
         </div>
 
         {/* フォーム */}
@@ -164,14 +107,10 @@ export default function SignInPage() {
           <button 
             type="submit" 
             disabled={loading}
-            className={`w-full font-bold py-2.5 rounded-lg transition-all mt-2 text-xs flex items-center justify-center gap-1.5 cursor-pointer text-white ${
-              userType === "officer" 
-                ? "bg-purple-600 hover:bg-purple-500 shadow-purple-500/10" 
-                : "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/10"
-            }`}
+            className="w-full font-bold py-2.5 rounded-lg transition-all mt-2 text-xs flex items-center justify-center gap-1.5 cursor-pointer text-white bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/10"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            {loading ? "照合＆アカウント作成中..." : `${userType === "officer" ? "役員" : "一般部員"}として新規登録`}
+            {loading ? "登録処理中..." : "新規アカウント登録"}
           </button>
         </form>
 
