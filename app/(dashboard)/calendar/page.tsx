@@ -46,7 +46,6 @@ export default function CalendarPage() {
     const [requiresCourt, setRequiresCourt] = useState(false);
     const [targetRole, setTargetRole] = useState<string[]>(["all"]);
     const [memo, setMemo] = useState("");
-    const [isPastEvent, setIsPastEvent] = useState(false);
 
     const [bulkType, setBulkType] = useState<"組織練" | "コート予約">("組織練");
     const [bulkStartDate, setBulkStartDate] = useState(TODAY_STR);
@@ -105,7 +104,7 @@ export default function CalendarPage() {
     }, []);
 
     const isOfficer = userMetadata?.role === 'officer';
-    const isReadOnly = isPastEvent || !isOfficer;
+    const isReadOnly = !isOfficer;
 
     const fetchEvents = async () => {
         setLoading(true);
@@ -175,7 +174,6 @@ export default function CalendarPage() {
         setRequiresCourt(false);
         setTargetRole(["all"]);
         setMemo("");
-        setIsPastEvent(false);
     };
 
     const openModal = (mode: "add" | "edit" | "soshikiren-setting", event?: CalendarEvent) => {
@@ -189,7 +187,6 @@ export default function CalendarPage() {
             setRequiresCourt(event.requires_court);
             setTargetRole(event.target_role || ["all"]);
             setMemo(event.memo || "");
-            setIsPastEvent(event.date < TODAY_STR);
         } else {
             resetForm();
         }
@@ -264,11 +261,6 @@ export default function CalendarPage() {
         if (!selectedDay) return;
 
         const formattedDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
-
-        if (modalMode === "edit" && isPastEvent) {
-            alert("過去の予定は変更できません。");
-            return;
-        }
 
         const eventData = {
             title,
@@ -560,7 +552,6 @@ export default function CalendarPage() {
                                                             <input
                                                                 type="checkbox"
                                                                 checked={isChecked}
-                                                                disabled={isPastEvent}
                                                                 onChange={() => {
                                                                     if (isChecked) {
                                                                         setTargetRole(targetRole.filter(r => r !== roleName));
