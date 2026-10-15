@@ -86,6 +86,8 @@ export default function CalendarPage() {
     const blankDays = Array.from({ length: blankDaysCount });
 
     const [userMetadata, setUserMetadata] = useState<any>(null);
+    
+    const [roleFilter, setRoleFilter] = useState<string>("all");
 
     // 💡 認証チェックとユーザー情報取得を一元管理（middlewareなしで直帰させるガード）
     useEffect(() => {
@@ -330,13 +332,30 @@ export default function CalendarPage() {
         );
     }
 
+    const isAllOfficers = (roles: string[]) => {
+        const selected = roles.filter((r) => r !== "officers");
+        return (
+            selected.length === 0 ||
+            (dbRoles.length > 0 && dbRoles.every((r) => selected.includes(r)))
+        );
+    };
+
     const getTargetLabel = (raw: unknown): string | null => {
         const roles = normalizeRoles(raw);
         if(roles[0] === "all") return null;
-        const selected = roles.filter((r)=> r !== "officers");
-        const isAllOfficers = selected.length === 0 || (dbRoles.length > 0 && dbRoles.every((r) => selected.includes(r)));
-        return isAllOfficers ? "役員全員" : selected.join("、");
+        if(isAllOfficers(roles)) return "役員全員";
+        return roles.filter((r) => r !== "officers").join(", ");
     };
+
+    const matchesFilter = (event: CalendarEvent) => {
+        if (roleFilter === "all") return true;
+        const roles = normalizeRoles(event.target_role);
+        if(roles[0] === "all") return true;
+        if(isAllOfficers(roles)) return true;
+        return roles.includes(roleFilter);
+    };
+
+    const filteredEvents = events.filter(matchesFilter);
 
     return (
         <div className="p-4 max-w-md mx-auto md:max-w-4xl bg-slate-950 min-h-screen text-slate-100">
@@ -347,6 +366,23 @@ export default function CalendarPage() {
                     <button onClick={() => { setSelectedDay(null); if (currentMonth === 12) { setCurrentYear(currentYear + 1); setCurrentMonth(1); } else { setCurrentMonth(currentMonth + 1); } }} className="p-2 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-md transition-colors">▶</button>
                 </div>
 
+                {dbRoles.length > 0 && (
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-400">表示する対象</label>
+                        <select
+                            value={roleFilter}
+                            onChange={(e) => setRoleFilter(e.target.value)}
+                            className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-none"
+                        >
+                            <option value="all">全表示</option>
+                            {dbRoles.map((r) => (
+                                <option key={r} value={r}>
+                                    {r}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <div>
                     <button onClick={() => { setSelectedDay(null); setCurrentYear(currentYear-1); }} className="px-2 py-1 text-xs bg-slate-900 border border-slate-800 rounded-md text-slate-400 hover:text-white transition-colors">1年戻る</button>
                     <button onClick={() => { setSelectedDay(null); setCurrentYear(currentYear+1); }} className="px-2 py-1 text-xs bg-slate-900 border border-slate-800 rounded-md text-slate-400 hover:text-white transition-colors">1年進む</button>
@@ -378,7 +414,7 @@ export default function CalendarPage() {
                     ))}
                     {dayInMonth.map((day) => {
                         const formattedDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                        const dayEvents = events.filter(e => e.date === formattedDate);
+                        const dayEvents = filteredEvents.filter(e => e.date === formattedDate);
                         const isSelected = selectedDay === day;
                         const isToday = formattedDate === TODAY_STR;
 
@@ -412,8 +448,8 @@ export default function CalendarPage() {
                 <div className="w-full bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-2xl">
                     <h2 className="text-base font-bold text-slate-100 border-b border-slate-800 pb-2 mb-3">{currentMonth}月{selectedDay}日の予定</h2>
                     <div className="space-y-2">
-                        {events.filter(e => e.date === `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`).length > 0 ? (
-                            events.filter(e => e.date === `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`).map(event => (
+                        {filteredEvents.filter(e => e.date === `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`).length > 0 ? (
+                            filteredEvents.filter(e => e.date === `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`).map(event => (
                                 <button key={event.id} onClick={() => openModal("edit", event)} className="w-full text-left border-l-4 border-emerald-500 pl-3 py-2 bg-slate-800/50 rounded-r-md hover:bg-slate-800 transition-colors block">
                                     <div className="font-bold text-sm text-slate-200">{event.title}</div>
                                     <div className="text-xs text-slate-400">{event.start_time.slice(0, 5)} - {event.end_time.slice(0, 5)}</div>
@@ -565,7 +601,7 @@ export default function CalendarPage() {
                                             <input
                                                 type="radio"
                                                 name="targetScope"
-                                                checked={targetRole[0] === "officers"}
+                                                checked={isAllOfficers(targetRole)}
                                                 disabled={isReadOnly}
                                                 onChange={() => setTargetRole(["officers", ...dbRoles])}
                                                 className="accent-emerald-500 w-4 h-4"
@@ -574,33 +610,34 @@ export default function CalendarPage() {
                                         </label>
                                     </div>
 
-                                    {targetRole[0] === "officers" && (
-                                        <div className="bg-slate-950 border border-slate-800 rounded-md p-3 space-y-2 animate-in fade-in duration-150">
-                                            <label className="block text-[11px] font-medium text-slate-500 border-b border-slate-800 pb-1 mb-1">担当役職（複数選択可）</label>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {dbRoles.map((roleName) => {
-                                                    const isChecked = targetRole.includes(roleName);
-                                                    return (
-                                                        <label key={roleName} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer hover:text-white transition-colors">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isChecked}
-                                                                onChange={() => {
-                                                                    if (isChecked) {
-                                                                        setTargetRole(targetRole.filter(r => r !== roleName));
-                                                                    } else {
+                                    <div className="bg-slate-950 border border-slate-800 rounded-md p-3 space-y-2 animate-in fade-in duration-150">
+                                        <label className="block text-[11px] font-medium text-slate-500 border-b border-slate-800 pb-1 mb-1">担当役職（複数選択可）</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {dbRoles.map((roleName) => {
+                                                const isChecked = targetRole.includes(roleName);
+                                                return (
+                                                    <label key={roleName} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer hover:text-white transition-colors">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={() => {                                                                    if (isChecked) {
+                                                                    setTargetRole(targetRole.filter(r => r !== roleName));
+                                                                } else {
+                                                                    if(targetRole[0]==="all"){
+                                                                        setTargetRole(["officers",roleName])
+                                                                      }else{
                                                                         setTargetRole([...targetRole, roleName]);
                                                                     }
-                                                                }}
-                                                                className="w-3.5 h-3.5 accent-emerald-500 rounded"
-                                                            />
-                                                            {roleName}
-                                                        </label>
-                                                    );
-                                                })}
-                                            </div>
+                                                                 }
+                                                            }}
+                                                            className="w-3.5 h-3.5 accent-emerald-500 rounded"
+                                                        />
+                                                        {roleName}
+                                                    </label>
+                                                );
+                                            })}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
 
                                 <div>
