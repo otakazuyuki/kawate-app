@@ -7,6 +7,21 @@ import { supabase } from "@/supabase";
 const d = new Date();
 const TODAY_STR = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+const normalizeRoles = (v:unknown):string[] => {
+    if(Array.isArray(v)) return v as string[];
+    if(typeof v === "string" && v.length > 0){
+        const s = v.trim();
+        if(s.startsWith("[")){
+            try{
+                const parsed = JSON.parse(s);
+                if(Array.isArray(parsed)) return parsed;
+            } catch{}
+        }
+        return [s];
+    }
+    return ["all"];
+};
+
 interface CalendarEvent {
     id: string;
     title: string;
@@ -120,7 +135,11 @@ export default function CalendarPage() {
         if (error) {
             console.error("データ取得失敗:", error.message);
         } else {
-            setEvents(data || []);
+            setEvents(
+                (data || []).map((e) => ({
+                    ...e, target_role: normalizeRoles(e.target_role),
+                }))
+            );
         }
         setLoading(false);
     };
@@ -185,7 +204,7 @@ export default function CalendarPage() {
             setEndTime(event.end_time.slice(0, 5));
             setRequiresForm(event.requires_form);
             setRequiresCourt(event.requires_court);
-            setTargetRole(event.target_role || ["all"]);
+            setTargetRole(normalizeRoles(event.target_role));
             setMemo(event.memo || "");
         } else {
             resetForm();
@@ -226,18 +245,16 @@ export default function CalendarPage() {
                 const dateStr = String(d.getDate()).padStart(2, '0');
                 const formattedDate = `${year}-${month}-${dateStr}`;
 
-                if (formattedDate >= TODAY_STR) {
-                    bulkInsertData.push({
+                bulkInsertData.push({
                         title: bulkType,
                         date: formattedDate,
                         start_time: setting.startTime,
                         end_time: setting.endTime,
                         requires_form: false,
                         requires_court: false,
-                        target_role: "all",
+                        target_role: ["all"],
                         memo: "",
                     });
-                }
             }
         }
 
@@ -313,6 +330,14 @@ export default function CalendarPage() {
         );
     }
 
+    const getTargetLabel = (raw: unknown): string | null => {
+        const roles = normalizeRoles(raw);
+        if(roles[0] === "all") return null;
+        const selected = roles.filter((r)=> r !== "officers");
+        const isAllOfficers = selected.length === 0 || (dbRoles.length > 0 && dbRoles.every((r) => selected.includes(r)));
+        return isAllOfficers ? "役員全員" : selected.join("、");
+    };
+
     return (
         <div className="p-4 max-w-md mx-auto md:max-w-4xl bg-slate-950 min-h-screen text-slate-100">
             <div className="flex items-center justify-between mb-4">
@@ -320,6 +345,11 @@ export default function CalendarPage() {
                     <button onClick={() => { setSelectedDay(null); if (currentMonth === 1) { setCurrentMonth(12); setCurrentYear(currentYear - 1); } else { setCurrentMonth(currentMonth - 1); } }} className="p-2 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-md transition-colors">◀</button>
                     <h2 className="text-xl font-bold min-w-[120px] text-center">{currentYear}年 {currentMonth}月</h2>
                     <button onClick={() => { setSelectedDay(null); if (currentMonth === 12) { setCurrentYear(currentYear + 1); setCurrentMonth(1); } else { setCurrentMonth(currentMonth + 1); } }} className="p-2 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-md transition-colors">▶</button>
+                </div>
+
+                <div>
+                    <button onClick={() => { setSelectedDay(null); setCurrentYear(currentYear-1); }} className="px-2 py-1 text-xs bg-slate-900 border border-slate-800 rounded-md text-slate-400 hover:text-white transition-colors">1年戻る</button>
+                    <button onClick={() => { setSelectedDay(null); setCurrentYear(currentYear+1); }} className="px-2 py-1 text-xs bg-slate-900 border border-slate-800 rounded-md text-slate-400 hover:text-white transition-colors">1年進む</button>
                 </div>
 
                 {isOfficer && (
@@ -387,6 +417,9 @@ export default function CalendarPage() {
                                 <button key={event.id} onClick={() => openModal("edit", event)} className="w-full text-left border-l-4 border-emerald-500 pl-3 py-2 bg-slate-800/50 rounded-r-md hover:bg-slate-800 transition-colors block">
                                     <div className="font-bold text-sm text-slate-200">{event.title}</div>
                                     <div className="text-xs text-slate-400">{event.start_time.slice(0, 5)} - {event.end_time.slice(0, 5)}</div>
+                                    {getTargetLabel(event.target_role) && (
+                                        <div className="text-xs text-slate-400 mt-1">対象: {getTargetLabel(event.target_role)}</div>
+                                    )}
                                     {event.memo && <div className="text-xs text-slate-500 mt-1 truncate">{event.memo}</div>}
                                 </button>
                             ))
@@ -434,11 +467,11 @@ export default function CalendarPage() {
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <label className="block text-xs font-medium text-slate-400 mb-1">開始日</label>
-                                        <input type="date" value={bulkStartDate} min={TODAY_STR} onChange={(e) => setBulkStartDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required />
+                                        <input type="date" value={bulkStartDate} onChange={(e) => setBulkStartDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-slate-400 mb-1">終了日</label>
-                                        <input type="date" value={bulkEndDate} min={bulkStartDate} onChange={(e) => setBulkEndDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required />
+                                        <input type="date" value={bulkEndDate} onChange={(e) => setBulkEndDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs text-slate-100 focus:outline-none" required />
                                     </div>
                                 </div>
 
